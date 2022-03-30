@@ -1,0 +1,51 @@
+Pow : U -> U =
+  [X : U] X -> U ;
+
+T : U -> U =
+  [X : U] Pow (Pow X) ;
+
+
+abs : U = [X : U] X;
+
+not : U -> U = [X : U] X -> abs ;
+
+A : U = [X : U] (T X -> X) -> X ;
+
+
+-- T X = Pow (Pow X) = Pow (X -> U) = (X -> U) -> U
+-- T A = Pow (Pow A) = (A -> U) -> U = 
+-- T A = T ([X : U] (T X -> X) -> X) = Pow (Pow ([X : U] (T X -> X) -> X))
+--     = Pow (([X : U] (T X -> X) -> X)) -> U) = ([X : U] (T X -> X) -> X) -> U -> U
+--     = (([X : U] ((((X -> U) -> U) -> X) -> X)) -> U) -> U
+
+
+intro : T A -> A = [t : T A][X : U][f : T X -> X] f ([g : Pow X] t ([z : A] g (z X f))) ;
+
+match : A -> T A = [z : A]z (T A) ([t : T (T A)][g : Pow A] t ([x : T A] g (intro x))) ;
+
+delta : A -> A = [z : A] intro (match z) ;
+
+Q : T A = [p : Pow A][z : A]match z p -> p z;
+
+cDelta : Pow A -> Pow A =  [p : Pow A][z:A]p (delta z) ;
+
+a0 : A = intro Q ;
+
+lem1 : [p : Pow A]Q p -> p a0 = [p : Pow A][h : Q p]h a0 ([x : A]h (delta x)) ;
+
+
+Ed : Pow A = [z:A][p:Pow A]match z p -> p (delta z) ;
+
+lem2 :  Ed a0  = [p:Pow A]lem1 (cDelta p) ;
+
+B : Pow A =  [z : A] not (Ed z) ;
+
+lem3 : Q B = [z : A] [k : match z B] [l : Ed z] l B k ([p:Pow A]l (cDelta p));
+
+lem4 : not (Ed a0) = lem1 B lem3 ;
+
+--loop : abs = lem4 lem2 ;
+
+--test : abs -> U = [x : abs] A ;
+
+--test2 : test loop = a0 ;

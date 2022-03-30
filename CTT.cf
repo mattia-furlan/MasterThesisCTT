@@ -1,0 +1,26 @@
+
+entrypoints Context, Term, Decl ;
+
+
+Ctx. Context ::= [Decl] ;
+
+
+coercions Term 3 ;
+Fun      . Term ::= Term1 "->" Term ;
+Abst     . Term ::= "[" Ident ":" Term "]" Term ;
+App      . Term1 ::= Term1 Term2 ;
+Var      . Term2 ::= Ident ;
+Universe . Term2 ::= "U" ;
+Nat      . Term2 ::= "N" ;
+Zero     . Term2 ::= "0" ;
+Succ     . Term2 ::= "S" Term2 ;
+
+
+Def. Decl ::= Ident ":" Term "=" Term ;
+Ex . Decl ::= Term ;
+
+terminator Decl ";" ;
+
+
+comment "--" ;
+comment "{-" "-}" ;

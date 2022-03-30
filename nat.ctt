@@ -1,0 +1,87 @@
+{- Induction testing -}
+
+idN : N -> U = [x:N]N ;
+
+zero : N = ind idN 0 ([n:N][m:N]0) 0 ;
+
+succ : N -> N = [n : N] ind idN (S 0) ([n':N][m:N]S m) n ;
+
+plus : N -> N -> N = [m : N][n : N] ind idN m ([n':N][mPlusn:N]S mPlusn) n ;
+
+mult : N -> N -> N = [m : N][n : N] ind idN 0 ([n':N][mTimesn:N] plus mTimesn m) n ;
+
+exp : N -> N -> N = [m : N][n : N] ind idN (S 0) ([n':N][mExpn:N] mult mExpn m) n ;
+
+tetra : N -> N -> N = [m : N][n : N] ind idN (S 0) ([n':N][mTetran:N] exp m mTetran) n ;
+
+succ (S S S S 0) ;
+
+plus (S S S 0) (S S S 0) ;
+
+mult (S S 0) (S S S S 0) ;
+
+exp (S S S 0) (S S S 0) ;
+
+
+{- Some logic -}
+
+bot : U = [X:U]X ;
+
+neg : U -> U = [A:U] A -> U ;
+
+ind_bot : [A:U] bot -> A = [A:U][b:bot] b A ;
+
+one : U = [A:U] bot -> A ;
+
+star : one = [A:U][b:bot] b A ;
+
+--Is it provable??
+--ind_one : [C:one -> U][h:C star][x:one] C x = 0;
+
+
+
+{- Product of two types -}
+--Not really, I should use "2" instead of "nat"
+
+prod : U -> U -> U = [A:U][B:U][x:N] ind ([y:N]U) A ([n:N][p:U]B) x ;
+pi1 : [A:U][B:U] prod A B -> A = [A:U][B:U][p : prod A B] p 0 ;
+pi2 : [A:U][B:U] prod A B -> B = [A:U][B:U][p : prod A B] p (S 0) ;
+couple : [A:U][B:U] A -> B -> prod A B = [A:U][B:U][a:A][b:B][x:N] ind ([y:N]ind ([z:N]U) A ([n:N][p:U]B) y) a ([n:N][p:ind ([w:N]U) A ([m:N][q:U]B) n] b) x;
+
+NpN : U = prod N N ;
+couple13 : NpN = couple N N (S 0) (S S S 0) ;
+pi1 N N couple13 ;
+pi2 N N couple13 ;
+
+NpNpN : U = prod NpN N ;
+triple135 : NpNpN = couple NpN N couple13 (S S S S S 0) ;
+pi1 N N (pi1 NpN N triple135) ;  --reduces to 1
+pi2 N N (pi1 NpN N triple135) ;  --reduces to 3
+pi2 NpN N triple135 ;            --reduces to 5
+
+OpN : U = prod one N ;
+extract_OpN : [f:OpN -> N] N -> N = [f:OpN -> N][n:N] f (couple one N star n) ;
+
+
+{- Booleans -}
+
+Bool : U = [X:U] X -> X -> X ;
+True  : Bool = [X:U][x:X][y:X] x ;
+False : Bool = [X:U][x:X][y:X] y ;
+If : [A:U] Bool -> A -> A -> A = [A:U][cond:Bool][u:A][v:A] cond A u v ;
+
+rec_Bool : [C:U] C -> C -> Bool -> C = [C:U][x1:C][x2:C][x:Bool] If C x x1 x2 ; --it's the same as 'If'!
+
+--Can it be proved?
+--ind_Bool : [C:Bool -> U] C False -> C True -> [x:Bool] C x = [C:Bool -> U][h1:C False][h2:C True][x:Bool] rec_Bool ([y:Bool] C y) h1 h2 x ;
+
+
+
+{- Coproduct built using Bool -}
+
+prod' : U -> U -> U = [A:U][B:U][x:Bool] rec_Bool U A B x ;
+p1' : [A:U][B:U] prod' A B -> A = [A:U][B:U][p:prod' A B] p True;
+p2' : [A:U][B:U] prod' A B -> B = [A:U][B:U][p:prod' A B] p False;
+
+--does not work.. I need the inductor for Bool!
+--makeCouple : [A:U][B:U] A -> B -> prod A B = [A:U][B:U][a:A][b:B][x:Bool] rec_Bool ([y:Bool] rec_Bool U A B y) a b x ; 
