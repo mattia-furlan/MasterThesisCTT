@@ -38,10 +38,6 @@ doInd ty base step n = case n of
             prev = doInd ty base step n'    
     otherwise -> VInd ty base step n --neutral value
 
--- Generates a new name starting from 'x' (maybe too inefficient - TODO)
-newVar :: [Ident] -> Ident -> Ident
-newVar used x = if x `elem` used then newVar used (Ident $ show x ++ "'") else x
-
 readBack :: [Ident] -> Value -> Term
 readBack used (VVar s) = Var s
 readBack used VUniverse = Universe

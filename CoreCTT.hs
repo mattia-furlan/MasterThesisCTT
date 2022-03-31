@@ -75,6 +75,10 @@ collectApps t apps = case t of
     App t1 t2' -> collectApps t1 (t2' : apps)
     otherwise -> (t,apps)
 
+-- Generates a new name starting from 'x' (maybe too inefficient - TODO)
+newVar :: [Ident] -> Ident -> Ident
+newVar used x = if x `elem` used then newVar used (Ident $ show x ++ "'") else x
+
 termVars :: Term -> [Ident]
 termVars t = case t of
     Var s        -> [s]
@@ -198,7 +202,7 @@ data EnvEntry = Val Value
 type Ctx = Env CtxEntry
 
 data CtxEntry = Decl Term      -- Type
-              | Def Term Term -- Type and definition
+              | Def Term Term  -- Type and definition
     deriving Show
 
 emptyCtx :: Ctx

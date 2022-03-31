@@ -7,7 +7,6 @@ import Control.Monad
 import CoreCTT
 import Eval
 
-
 inferType :: Ctx -> Term -> Either ErrorString Value
 inferType ctx t = case t of
     Var s -> return $ eval (ctxToEnv ctx) (forceRight $ lookupType ctx s)
@@ -58,8 +57,10 @@ checkType ctx e v = case (e,v) of
         unless (alphaEquivValue ctx tVal t1Val) $
             Left $ "type '" ++ showValue tVal AsType ++ "' is not convertible to type '" ++ showValue t1Val AsType ++
                 "' (while checking term '" ++ showTerm (Abst s t e) AsTerm ++ "' against type '" ++ showValue v AsType ++ "')"
-        let e1Val = eval (extendEnv rho s1 (Val (VVar s))) e1
-        checkType (extendEnv ctx s (Decl t)) e e1Val
+        --Instead of 's' I should choose a new name ('s' could be already in the context)
+        let var = newVar (getIdentsEnv ctx ++ [s,s1]) s
+        let e1Val = eval (extendEnv rho s1 (Val (VVar var))) e1
+        checkType (extendEnv ctx s (Def t (Var var))) e e1Val
     (Nat,VUniverse) -> Right ()
     (Zero,VNat) -> Right ()
     (Succ n,VNat) -> checkType ctx n VNat
