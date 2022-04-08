@@ -1,0 +1,20 @@
+Path : [A : U] A -> A -> U =
+	[A : U][a0 : A][a1 : A][i : I] [(i = 0) \/ (i = 1) -> [[i = 0] a0, [i = 1] a1]] A ;
+
+system : [i:I][i = 0 \/ i = 1]N = [i:I][[i=0] 0 , [i=1] S 0] ;
+
+refl : [A : U][a : A] Path A a a = [i : I] a ;
+
+{-
+
+eval (i -> 0) (Path A a0 a1) == [FTrue -> a0] A == a0
+
+-}
+
+{-
+
+trans : [A : U][a : A][b : A][c : A] Path A a b -> Path A b c -> Path A a c =
+	[A : U][a : A][b : A][c : A][p : Path A a b][q : Path A b c]
+		[i : I] comp j ([i' : I] A) [(i = 0) a, (i = 1) q j] (p i) ;
+
+-}

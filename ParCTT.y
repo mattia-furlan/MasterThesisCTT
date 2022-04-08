@@ -7,49 +7,63 @@ module ParCTT
   , pProgram
   , pToplevel
   , pTerm
+  , pFormula
+  , pSystem
   ) where
 
 import Prelude
+import qualified Data.Map as Map
 
+import Ident
 import qualified CoreCTT
+import Interval
 import LexCTT
 
 }
 
 %name pProgram Program
-%name pTerm Term
 %name pToplevel Toplevel
+%name pTerm Term
+%name pFormula Formula
+%name pSystem System
 -- no lexer declaration
 %monad { Err } { (>>=) } { return }
 %tokentype {Token}
 %token
   '(' { PT _ (TS _ 1) }
   ')' { PT _ (TS _ 2) }
-  '->' { PT _ (TS _ 3) }
-  '0' { PT _ (TS _ 4) }
-  ':' { PT _ (TS _ 5) }
-  ';' { PT _ (TS _ 6) }
-  '=' { PT _ (TS _ 7) }
-  'N' { PT _ (TS _ 8) }
-  'S' { PT _ (TS _ 9) }
-  'U' { PT _ (TS _ 10) }
-  '[' { PT _ (TS _ 11) }
-  ']' { PT _ (TS _ 12) }
-  'ind' { PT _ (TS _ 13) }
+  ',' { PT _ (TS _ 3) }
+  '->' { PT _ (TS _ 4) }
+  '/\\' { PT _ (TS _ 5) }
+  '0' { PT _ (TS _ 6) }
+  '1' { PT _ (TS _ 7) }
+  ':' { PT _ (TS _ 8) }
+  ';' { PT _ (TS _ 9) }
+  '=' { PT _ (TS _ 10) }
+  'I' { PT _ (TS _ 11) }
+  'N' { PT _ (TS _ 12) }
+  'S' { PT _ (TS _ 13) }
+  'U' { PT _ (TS _ 14) }
+  '[' { PT _ (TS _ 15) }
+  '\\/' { PT _ (TS _ 16) }
+  ']' { PT _ (TS _ 17) }
+  'ind' { PT _ (TS _ 18) }
   L_Ident  { PT _ (TV $$) }
 
 %%
 
-Ident :: { CoreCTT.Ident }
-Ident  : L_Ident { CoreCTT.Ident $1 }
+Ident :: { Ident }
+Ident  : L_Ident { Ident $1 }
 
 Program :: { CoreCTT.Program }
 Program : ListToplevel { CoreCTT.Program $1 }
 
 Term :: { CoreCTT.Term }
 Term : Term1 { $1 }
-     | Term1 '->' Term { CoreCTT.Abst (CoreCTT.Ident "") $1 $3 }
+     | Term1 '->' Term { CoreCTT.Abst (Ident "") $1 $3 }
      | '[' Ident ':' Term ']' Term { CoreCTT.Abst $2 $4 $6 }
+     | '[' Formula ']' Term { CoreCTT.Partial $2 $4 }
+     | '[' Formula '->' Term ']' Term { CoreCTT.Restr $2 $4 $6 }
 
 Term1 :: { CoreCTT.Term }
 Term1 : Term2 { $1 }
@@ -63,9 +77,11 @@ Term2 : Term3 { $1 }
       | '0' { CoreCTT.Zero }
       | 'S' Term2 { CoreCTT.Succ $2 }
       | 'ind' Term2 Term2 Term2 Term2 { CoreCTT.Ind $2 $3 $4 $5 }
+      | 'I' { CoreCTT.I }
 
 Term3 :: { CoreCTT.Term }
 Term3 : '(' Term ')' { $2 }
+      | System { CoreCTT.Sys $1 }
 
 Toplevel :: { CoreCTT.Toplevel }
 Toplevel : Ident ':' Term '=' Term { CoreCTT.Definition $1 $3 $5 }
@@ -74,6 +90,36 @@ Toplevel : Ident ':' Term '=' Term { CoreCTT.Definition $1 $3 $5 }
 ListToplevel :: { [CoreCTT.Toplevel] }
 ListToplevel : {- empty -} { [] }
              | Toplevel ';' ListToplevel { (:) $1 $3 }
+
+Formula :: { Formula }
+Formula : Formula1 { $1 }
+        | Formula '\\/' Formula1 { $1 :\/: $3 }
+
+Formula1 :: { Formula }
+Formula1 : Formula2 { $1 }
+         | Formula1 '/\\' Formula2 { $1 :/\: $3 }
+
+Formula2 :: { Formula }
+Formula2 : Formula3 { $1 }
+         | '1' { FTrue }
+         | '0' { FFalse }
+         | Ident '=' '0' { Eq0 $1 }
+         | Ident '=' '1' { Eq1 $1 }
+         | Ident '=' Ident { Diag $1 $3 }
+
+Formula3 :: { Formula }
+Formula3 : '(' Formula ')' { $2 }
+
+System :: { CoreCTT.System CoreCTT.Term }
+System : '[' ListSysElem ']' { Map.fromList $2 }
+
+SysElem :: { (Formula,CoreCTT.Term) }
+SysElem : '[' Formula ']' Term { ($2,$4) }
+
+ListSysElem :: { [(Formula,CoreCTT.Term)] }
+ListSysElem : {- empty -} { [] }
+            | SysElem { (:[]) $1 }
+            | SysElem ',' ListSysElem { (:) $1 $3 }
 
 {
 

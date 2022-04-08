@@ -1,5 +1,6 @@
 {- Induction testing -}
 
+idU : N -> U = [x:N]U ;
 idN : N -> U = [x:N]N ;
 
 zero : N = ind idN 0 ([n:N][m:N]0) 0 ;
@@ -21,7 +22,6 @@ plus (S S S 0) (S S S 0) ;
 mult (S S 0) (S S S S 0) ;
 
 exp (S S S 0) (S S S 0) ;
-
 
 {- Some logic -}
 
@@ -55,6 +55,8 @@ pi2 N N couple13 ;
 
 NpNpN : U = prod NpN N ;
 triple135 : NpNpN = couple NpN N couple13 (S S S S S 0) ;
+--triple135' : NpNpN = couple NpN N (couple N N (S 0) (exp (S S S 0) (S ([f:N->N]0)(S 0) ))) (plus (S S S S 0) (tetra 0 0)) ;
+
 pi1 N N (pi1 NpN N triple135) ;  --reduces to 1
 pi2 N N (pi1 NpN N triple135) ;  --reduces to 3
 pi2 NpN N triple135 ;            --reduces to 5
@@ -85,3 +87,7 @@ p2' : [A:U][B:U] prod' A B -> B = [A:U][B:U][p:prod' A B] p False;
 
 --does not work.. I need the inductor for Bool!
 --makeCouple : [A:U][B:U] A -> B -> prod A B = [A:U][B:U][a:A][b:B][x:Bool] rec_Bool ([y:Bool] rec_Bool U A B y) a b x ; 
+
+
+--trick : [n:N] ind idU N ([m:N][p:U]N) n = [n:N]0 ; --'N' is different from 'ind idU N ([m:N][p:U]N) n'
+trick : [n:N] ind idU N ([m:N][p:U]N) n = [n:N] ind ([n':N] ind idU N ([m:N][p:U]N) n') 0 ([m:N][p:ind idU N ([m':N][p':U]N) m]0) n ;

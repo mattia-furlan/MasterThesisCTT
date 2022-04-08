@@ -6,14 +6,15 @@ import System.Exit        ( exitFailure, exitSuccess )
 import Control.Monad      ( return, when, forever, foldM, foldM_ )
 import Control.Monad.State
 import Data.List
+import qualified Data.Map as Map
 
-import CoreCTT
 import LexCTT   ( Token )
 import ParCTT   ( pTerm, pToplevel, pProgram, myLexer )
-import PrintCTT ( Print, printTree )
 
-import TypeChecker
+import Ident
+import CoreCTT
 import Eval
+import TypeChecker
 
 type Err = Either String
 
@@ -37,7 +38,6 @@ run s = case pProgram ts of
         liftIO $ showErr err
         return False
     Right program -> do
-        --let program' = transformProgram (programVars program) program
         checkProgram program
     where
         ts = myLexer s
@@ -54,16 +54,20 @@ checkProgram (Program (toplevel : decls)) = do
 --Checks if a term contains undeclared variables (True = OK)
 checkVars :: Ctx -> Term -> Bool
 checkVars ctx t = case t of
-    Var s        -> case lookupEnv ctx s of
+    Var s         -> case lookupEnv ctx s of
         Left  _ -> False
         Right _ -> True
-    Universe     -> True
-    Abst s t e   -> checkVars ctx t && checkVars (extendEnv ctx s (Decl {-dummy-}Universe)) e
-    App fun arg  -> checkVars ctx fun && checkVars ctx arg
-    Nat          -> True
-    Zero         -> True
-    Succ t       -> checkVars ctx t
-    Ind ty b s n -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
+    Universe      -> True
+    Abst s t e    -> checkVars ctx t && checkVars (extendEnv ctx s (Decl {-dummy-}Universe)) e
+    App fun arg   -> checkVars ctx fun && checkVars ctx arg
+    Nat           -> True
+    Zero          -> True
+    Succ t        -> checkVars ctx t
+    Ind ty b s n  -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
+    I             -> True
+    Sys sys       -> all (checkVars ctx) (Map.elems sys)
+    Partial phi t -> checkVars ctx t --TODO add interval names check
+    Restr phi u t -> checkVars ctx u && checkVars ctx t
 
 checkSingleToplevel :: Toplevel -> StateT ReplState IO Bool
 checkSingleToplevel (Example t) = do
@@ -105,14 +109,14 @@ checkSingleToplevel' (Example t) = do
             let norm = normalize (ctxToEnv ctx) t --since 't' typechecks, 't' must have a normal form
             liftIO . putStrLn $
                 "'" ++ showTerm t AsTerm ++ "' reduces to " ++
-                    showTerm norm (if alphaEquivValue emptyCtx tyVal VUniverse then AsType else AsTerm)
+                    showTerm norm (if conv tyVal VUniverse then AsType else AsTerm)
             put (ctx,t,lockedNames)
             return True
 checkSingleToplevel' (Definition s t e) = do
     (unlockedCtx,ans,lockedNames) <- get
     let ctx = getLockedCtx lockedNames unlockedCtx
-    liftIO . putStrLn $ "\nType-checking term '" ++ show s ++ "' of type '" ++ showTerm t AsType ++ 
-        "' and body '" ++ showTerm e AsTerm ++ "'" 
+    liftIO . putStrLn $ "\nType-checking term '" ++ show s ++ "' of type '" ++ showTerm t AsType  ++ 
+        "' and body '" ++ showTerm e AsTerm ++ "'"
     case addDef ctx (s,t,e) of
         Left err -> do
             liftIO . showErr $ err
@@ -192,7 +196,7 @@ printCtxLn :: Ctx -> IO ()
 printCtxLn (Env defs) = mapM_ (putStrLn . showEntry) (reverse defs)
 
 showErr :: String -> IO ()
-showErr err = putStrLn $ "\nError: " ++ show err
+showErr err = putStrLn $ "\nError: " ++ err
 
 main :: IO ()
 main = do
@@ -202,13 +206,15 @@ main = do
         [] -> do
             evalStateT doRepl initReplState
             exitSuccess
-        fs -> evalStateT (do
-            res <- foldM (\b fp -> (b &&) <$> runFile fp) True fs
-            liftIO $ unless res $ exitSuccess
-            (ctx,_,_) <- get
-            liftIO . putStrLn $ "\nCurrent context is:"
-            liftIO . printCtxLn $ ctx
-            doRepl) initReplState
+        fs -> evalStateT (
+            do
+                res <- foldM (\b fp -> (b &&) <$> runFile fp) True fs
+                liftIO $ unless res $ exitSuccess
+                (ctx,_,_) <- get
+                liftIO . putStrLn $ "\nCurrent context is:"
+                liftIO . printCtxLn $ ctx
+                doRepl
+            ) initReplState
 
 printUsage :: IO ()
 printUsage = do

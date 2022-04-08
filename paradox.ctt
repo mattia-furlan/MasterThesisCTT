@@ -18,7 +18,6 @@ A : U = [X : U] (T X -> X) -> X ;
 --     = Pow (([X : U] (T X -> X) -> X)) -> U) = ([X : U] (T X -> X) -> X) -> U -> U
 --     = (([X : U] ((((X -> U) -> U) -> X) -> X)) -> U) -> U
 
-
 intro : T A -> A = [t : T A][X : U][f : T X -> X] f ([g : Pow X] t ([z : A] g (z X f))) ;
 
 match : A -> T A = [z : A]z (T A) ([t : T (T A)][g : Pow A] t ([x : T A] g (intro x))) ;
