@@ -3,15 +3,15 @@
 
 module Interval where
 
-import Prelude as C
-import Data.List ( nub, intercalate )
-import Data.Set as Set
-import Data.Map as Map hiding ( fromList, toList )
+import qualified Data.List as List
+import Data.Set (Set(..), singleton, empty, toList, fromList)
+import qualified Data.Set  as Set
+import qualified Data.Map  as Map
 
 import Ident
 
 data Interval = IZero | IOne | IVar Ident
-    deriving (Eq)
+    deriving (Eq, Read)
 
 instance Show Interval where
     show IZero = "0"
@@ -53,21 +53,14 @@ type DNFFormula = (Set (Set (Ident,Interval)))
 trueDNF :: DNFFormula
 trueDNF = Set.singleton (Set.empty)
 
-{-
-instance Show DNFFormula where
-    show (dnf) = intercalate " \\/ " (C.map showConj (toList dnf))
-        where showConj :: Set (Ident,Interval) -> String
-              showConj conj = "(" ++ intercalate " /\\ " (C.map (\(s,i) -> show s ++ " = " ++ show i) (toList conj)) ++ ")"
--}
-
 showDNF :: DNFFormula -> String
-showDNF dnf = intercalate " \\/ " (C.map showConj (toList dnf))
+showDNF dnf = List.intercalate " \\/ " (map showConj (toList dnf))
     where showConj :: Set (Ident,Interval) -> String
-          showConj conj = "(" ++ intercalate " /\\ " (C.map (\(s,i) -> show s ++ " = " ++ show i) (toList conj)) ++ ")"
+          showConj conj = "(" ++ List.intercalate " /\\ " (map (\(s,i) -> show s ++ " = " ++ show i) (toList conj)) ++ ")"
 
 
 getFormulaNames :: Formula -> [Ident]
-getFormulaNames = nub . getFormulaNames' --remove duplicates
+getFormulaNames = List.nub . getFormulaNames' --remove duplicates
     where getFormulaNames' :: Formula -> [Ident]
           getFormulaNames' ff = case ff of
                 FTrue -> []
@@ -113,7 +106,7 @@ decomposeAnd ff = [ff]
 getBoundary :: Formula -> Formula
 getBoundary ff = foldOr disjunctions
     where names = getFormulaNames ff
-          disjunctions = C.map (\s -> (Eq0 s) :\/: (Eq1 s)) names
+          disjunctions = map (\s -> (Eq0 s) :\/: (Eq1 s)) names
 
 foldOrDNF :: [Set (Ident,Interval)] -> DNFFormula
 foldOrDNF conjs = if Set.empty `elem` conjs then trueDNF else fromList conjs
@@ -134,7 +127,7 @@ toDNF ff = case ff of
 
 
 fromDNF :: DNFFormula -> Formula
-fromDNF (dnf) = foldOr $ C.map (foldAnd . (C.map coupleToAtom) . toList) (toList dnf)
+fromDNF (dnf) = foldOr $ map (foldAnd . (map coupleToAtom) . toList) (toList dnf)
     where coupleToAtom (s,IZero) = (Eq0 s)
           coupleToAtom (s,IOne) = (Eq1 s)
           coupleToAtom (s1,IVar s2) = (Diag s1 s2)
@@ -147,11 +140,11 @@ simplifyDNF (dnf) = if Set.empty `Set.member` dnf then
         dnf' = Set.filter (not . Set.null) dnf
 
         simplifyConj1 :: Set (Ident,Interval) -> Set (Ident,Interval)
-        simplifyConj1 conj = C.foldl doDelete conj toDelete
+        simplifyConj1 conj = foldl doDelete conj toDelete
             where
-                names = C.map fst (Set.toList conj)
-                toDelete = C.filter (containsBoth conj) names
-                containsBoth conj' s = length (C.filter ( == s) names) > 1
+                names = map fst (Set.toList conj)
+                toDelete = filter (containsBoth conj) names
+                containsBoth conj' s = length (filter ( == s) names) > 1
                 doDelete conj' s = Set.filter ((/= s) . fst) conj'
 
 simplify :: Formula -> Formula
@@ -161,50 +154,42 @@ toDNFList :: Formula -> [[(Ident,Interval)]]
 toDNFList ff = Set.toList (Set.map Set.toList dnf)
     where dnf = simplifyDNF (toDNF ff)
 
-class Sub a where
-    subst :: a -> (Ident,Interval) -> a
+subst :: Formula -> (Ident,Interval) -> Formula
+subst ff (s,i) = case ff of
+    FTrue -> FTrue
+    FFalse -> FFalse
+    Eq0 s' -> if s == s' then 
+            case i of 
+                IZero  -> FTrue
+                IOne   -> FFalse
+                IVar x -> Diag s' x
+        else
+            Eq0 s'
+    Eq1 s' -> if s == s' then 
+            case i of 
+                IZero  -> FFalse
+                IOne   -> FTrue
+                IVar x -> Diag s' x
+        else
+            Eq1 s'
+    Diag s1 s2 -> if s == s1 then 
+            case i of 
+                IZero  -> Eq0 s2
+                IOne   -> Eq1 s2
+                IVar x -> Diag s2 x
+        else if s == s2 then 
+            case i of 
+                IZero  -> Eq0 s1
+                IOne   -> Eq1 s1
+                IVar x -> Diag s1 x
+        else
+            Diag s1 s2
+    ff1 :/\: ff2 -> (subst ff1 (s,i)) :/\: (subst ff2 (s,i))
+    ff1 :\/: ff2 -> (subst ff1 (s,i)) :\/: (subst ff2 (s,i))
 
-instance Sub Formula where
-    --subst :: Formula -> (Ident,Interval) -> Formula
-    subst ff (s,i) = case ff of
-        FTrue -> FTrue
-        FFalse -> FFalse
-        Eq0 s' -> if s == s' then 
-                case i of 
-                    IZero  -> FTrue
-                    IOne   -> FFalse
-                    IVar x -> Diag s' x
-            else
-                Eq0 s'
-        Eq1 s' -> if s == s' then 
-                case i of 
-                    IZero  -> FFalse
-                    IOne   -> FTrue
-                    IVar x -> Diag s' x
-            else
-                Eq1 s'
-        Diag s1 s2 -> if s == s1 then 
-                case i of 
-                    IZero  -> Eq0 s2
-                    IOne   -> Eq1 s2
-                    IVar x -> Diag s2 x
-            else if s == s2 then 
-                case i of 
-                    IZero  -> Eq0 s1
-                    IOne   -> Eq1 s1
-                    IVar x -> Diag s1 x
-            else
-                Diag s1 s2
-        ff1 :/\: ff2 -> (subst ff1 (s,i)) :/\: (subst ff2 (s,i))
-        ff1 :\/: ff2 -> (subst ff1 (s,i)) :\/: (subst ff2 (s,i))
 
-{-
 multipleSubst :: Formula -> [(Ident,Interval)] -> Formula
-multipleSubst ff list = C.foldl subst ff list
--}
-
-multipleSubst :: (Sub a) => a -> [(Ident,Interval)] -> a
-multipleSubst ff list = C.foldl subst ff list
+multipleSubst ff list = foldl subst ff list
 
 forall :: Ident -> Formula -> Formula
 forall s ff = case ff of
@@ -230,14 +215,7 @@ equalFormulas :: Formula -> Formula -> Bool
 equalFormulas ff1 ff2 = (toDNF ff1) == (toDNF ff2)
 
 checkCongruence :: Formula -> Formula -> Formula -> Bool
-checkCongruence ff ff1 ff2 = checkCongruenceDNF (toDNF ff) ff1 ff2 {-case ff of
-    FTrue -> equalFormulas ff1 ff2
-    FFalse -> equalFormulas ff1 ff2
-    Eq0 s -> equalFormulas (subst ff1 s IZero) (subst ff2 s IZero)
-    Eq1 s -> equalFormulas (subst ff1 s IOne) (subst ff2 s IOne)
-    Diag s1 s2 -> equalFormulas (subst ff1 s1 (IVar s2)) (subst ff2 s1 (IVar s2)) -- needed?
-    --ff' :/\: ff'' -> checkCongruence ff' () --TODO?
-    ff' :\/: ff'' -> checkCongruence ff' ff1 ff2 && checkCongruence ff'' ff1 ff2-}
+checkCongruence ff ff1 ff2 = checkCongruenceDNF (toDNF ff) ff1 ff2
 
 checkCongruenceDNF :: DNFFormula -> Formula -> Formula -> Bool
 checkCongruenceDNF dnf ff1 ff2 = all (\conj -> checkCongruenceConj (toList conj) ff1 ff2) (toList dnf)

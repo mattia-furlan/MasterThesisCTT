@@ -110,8 +110,8 @@ Formula2 : Formula3 { $1 }
 Formula3 :: { Formula }
 Formula3 : '(' Formula ')' { $2 }
 
-System :: { CoreCTT.System CoreCTT.Term }
-System : '[' ListSysElem ']' { Map.fromList $2 }
+System :: { CoreCTT.System }
+System : '[' ListSysElem ']' { $2 }
 
 SysElem :: { (Formula,CoreCTT.Term) }
 SysElem : '[' Formula ']' Term { ($2,$4) }

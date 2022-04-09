@@ -35,7 +35,7 @@ lem1 : [p : Pow A]Q p -> p a0 = [p : Pow A][h : Q p]h a0 ([x : A]h (delta x)) ;
 
 Ed : Pow A = [z:A][p:Pow A]match z p -> p (delta z) ;
 
-lem2 :  Ed a0  = [p:Pow A]lem1 (cDelta p) ;
+lem2 : Ed a0  = [p:Pow A]lem1 (cDelta p) ;
 
 B : Pow A =  [z : A] not (Ed z) ;
 

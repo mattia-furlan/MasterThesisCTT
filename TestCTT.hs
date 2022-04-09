@@ -5,8 +5,8 @@ import System.Environment ( getArgs )
 import System.Exit        ( exitFailure, exitSuccess )
 import Control.Monad      ( return, when, forever, foldM, foldM_ )
 import Control.Monad.State
-import Data.List
-import qualified Data.Map as Map
+import Data.List ( intercalate )
+import Data.Maybe ( isJust )
 
 import LexCTT   ( Token )
 import ParCTT   ( pTerm, pToplevel, pProgram, myLexer )
@@ -54,18 +54,16 @@ checkProgram (Program (toplevel : decls)) = do
 --Checks if a term contains undeclared variables (True = OK)
 checkVars :: Ctx -> Term -> Bool
 checkVars ctx t = case t of
-    Var s         -> case lookupEnv ctx s of
-        Left  _ -> False
-        Right _ -> True
+    Var s         -> isJust $ lookup s ctx
     Universe      -> True
-    Abst s t e    -> checkVars ctx t && checkVars (extendEnv ctx s (Decl {-dummy-}Universe)) e
+    Abst s t e    -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
     App fun arg   -> checkVars ctx fun && checkVars ctx arg
     Nat           -> True
     Zero          -> True
     Succ t        -> checkVars ctx t
     Ind ty b s n  -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
     I             -> True
-    Sys sys       -> all (checkVars ctx) (Map.elems sys)
+    Sys sys       -> all (checkVars ctx) (elems sys)
     Partial phi t -> checkVars ctx t --TODO add interval names check
     Restr phi u t -> checkVars ctx u && checkVars ctx t
 
@@ -73,10 +71,10 @@ checkSingleToplevel :: Toplevel -> StateT ReplState IO Bool
 checkSingleToplevel (Example t) = do
     (ctx,_,_) <- get
     if not (checkTermShadowing [] t) then do
-        liftIO . showErr $ "term '" ++ showTerm t AsTerm ++ "' contains shadowed variables"
+        liftIO . showErr $ "term '" ++ show t ++ "' contains shadowed variables"
         return False
     else if not (checkVars ctx t) then do
-        liftIO . showErr $ "term '" ++ showTerm t AsTerm ++ "' contains undeclared variables"
+        liftIO . showErr $ "term '" ++ show t ++ "' contains undeclared variables"
         return False
     else
         checkSingleToplevel' (Example t)
@@ -88,9 +86,9 @@ checkSingleToplevel def@(Definition s t e) = do
     else if not (checkVars ctx t && checkVars ctx e) then do
         liftIO . showErr $ "definition of '" ++ show s ++ "' contains undeclared variables"
         return False
-    else case lookupEnv ctx s of
-        Left  _ -> checkSingleToplevel' def
-        Right _ -> do
+    else case lookup s ctx of
+        Nothing -> checkSingleToplevel' def
+        Just _  -> do
             liftIO . showErr $ "context already contains name '" ++ show s ++ "'"
             return False
 
@@ -104,19 +102,16 @@ checkSingleToplevel' (Example t) = do
            liftIO $ showErr err
            return False
         Right tyVal -> do
-            liftIO . putStrLn $
-                "\n'" ++ showTerm t AsTerm ++ "' has (inferred) type '" ++ showValue tyVal AsType ++ "'"
+            liftIO . putStrLn $ "\n'" ++ show t ++ "' has (inferred) type '" ++ show tyVal ++ "'"
             let norm = normalize (ctxToEnv ctx) t --since 't' typechecks, 't' must have a normal form
-            liftIO . putStrLn $
-                "'" ++ showTerm t AsTerm ++ "' reduces to " ++
-                    showTerm norm (if conv tyVal VUniverse then AsType else AsTerm)
+            liftIO . putStrLn $ "'" ++ show t ++ "' reduces to " ++ show norm
             put (ctx,t,lockedNames)
             return True
 checkSingleToplevel' (Definition s t e) = do
     (unlockedCtx,ans,lockedNames) <- get
     let ctx = getLockedCtx lockedNames unlockedCtx
-    liftIO . putStrLn $ "\nType-checking term '" ++ show s ++ "' of type '" ++ showTerm t AsType  ++ 
-        "' and body '" ++ showTerm e AsTerm ++ "'"
+    liftIO . putStrLn $ "\nType-checking term '" ++ show s ++ "' of type '" ++ show t  ++ 
+        "' and body '" ++ show e ++ "'"
     case addDef ctx (s,t,e) of
         Left err -> do
             liftIO . showErr $ err
@@ -136,12 +131,12 @@ doRepl = do
         [":q"] -> do
             liftIO exitSuccess
         [":ans"] -> do
-            liftIO . putStrLn $ showTerm ans AsTerm
+            liftIO . putStrLn $ show ans
         [":ctx"] -> do
             liftIO . printCtxLn $ ctx
         [":head"] -> do
             let ans' = headRed ctx ans
-            liftIO . putStrLn $ showTerm ans' AsTerm
+            liftIO . putStrLn $ show ans'
             put (ctx,ans',lockedNames)
         ":head" : sterm -> do
             case pTerm (myLexer (intercalate " " sterm)) of
@@ -149,15 +144,16 @@ doRepl = do
                     liftIO . putStrLn $ "could not parse term"
                 Right term -> do
                     let ans' = headRed ctx term
-                    liftIO . putStrLn $ showTerm ans' AsTerm
+                    liftIO . putStrLn $ show ans'
                     put (ctx,ans',lockedNames)
-        ":clear" : idents -> do --TODO: still to implement properly
-            let ctx' = foldl removeFromEnv ctx (map Ident idents)
+        ":clear" : idents -> do
+            let ctx' = foldl removeFromCtx ctx (map Ident idents)
             put (ctx',ans,lockedNames)
         ":lock" : idents -> do
             let idents' = map Ident idents
-                identsToAdd = filter (isInEnv ctx) idents'
-                identsWrong = filter (not . isInEnv ctx) idents'
+                isInCtx = (`elem` (keys ctx))
+                identsToAdd = filter isInCtx idents'
+                identsWrong = filter (not . isInCtx) idents'
             when (length identsWrong > 0) $
                 liftIO . putStrLn $ "identifier(s) " ++ intercalate ", " (map show identsWrong) ++
                     " not found in the current context" 
@@ -179,7 +175,7 @@ doRepl = do
                     liftIO . putStrLn $ "\nParse failed!"
                     liftIO . showErr $ err
                 Right toplevel -> do
-                    --checkSingleToplevel (transformToplevel (getIdentsEnv ctx) toplevel)
+                    --checkSingleToplevel (transformToplevel (keys ctx) toplevel)
                     checkSingleToplevel toplevel
                     return ()
     doRepl --loop
@@ -187,13 +183,13 @@ doRepl = do
 -- Adds a definition to the current context 
 addDef :: Ctx -> (Ident,Term,Term) -> Either ErrorString Ctx
 addDef ctx (s,t,e) = do
-    checkType ctx t VUniverse -- Is 't' really a type?
+    checkType ctx t Universe -- Is 't' really a type?
     let tVal = eval (ctxToEnv ctx) t
     checkType ctx e tVal -- Has 'e' type 't'?
-    Right $ extendEnv ctx s (Def t e)
+    Right $ extend ctx s (Def t e)
 
 printCtxLn :: Ctx -> IO ()
-printCtxLn (Env defs) = mapM_ (putStrLn . showEntry) (reverse defs)
+printCtxLn ctx = mapM_ (putStrLn . showEntry) (reverse ctx)
 
 showErr :: String -> IO ()
 showErr err = putStrLn $ "\nError: " ++ err
@@ -231,7 +227,7 @@ printUsage = do
         , "|   :head                 apply head reduction to the last term used       |"
         , "|   :head <term>          apply head reduction to <term> (NOT type-checked)|"
         , "|   :ctx                  print current context                            |"
-        , "|   :clear <id> .. <id>   remove <id>'s from context                       |"
+        , "|   :clear <id> .. <id>   remove <id>'s from context (recursively)         |"
         , "|   :lock <id> .. <id>    lock <id>'s definition                           |"
         , "|   :unlock <id> .. <id>  unlock <id>'s definition                         |"
         , "|   :unlockall            unlock every currently locked definition         |"

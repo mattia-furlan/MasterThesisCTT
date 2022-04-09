@@ -119,8 +119,8 @@ happyIn19 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap19 x)
 happyOut19 :: (HappyAbsSyn ) -> HappyWrap19
 happyOut19 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut19 #-}
-newtype HappyWrap20 = HappyWrap20 (CoreCTT.System CoreCTT.Term)
-happyIn20 :: (CoreCTT.System CoreCTT.Term) -> (HappyAbsSyn )
+newtype HappyWrap20 = HappyWrap20 (CoreCTT.System)
+happyIn20 :: (CoreCTT.System) -> (HappyAbsSyn )
 happyIn20 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap20 x)
 {-# INLINE happyIn20 #-}
 happyOut20 :: (HappyAbsSyn ) -> HappyWrap20
@@ -525,7 +525,7 @@ happyReduction_39 happy_x_3
 	happy_x_1
 	 =  case happyOut22 happy_x_2 of { (HappyWrap22 happy_var_2) -> 
 	happyIn20
-		 (Map.fromList happy_var_2
+		 (happy_var_2
 	)}
 
 happyReduce_40 = happyReduce 4# 13# happyReduction_40

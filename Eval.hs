@@ -1,89 +1,83 @@
 module Eval where
 
-import qualified Data.List as List
-import qualified Data.Map as Map
+import Data.List (intercalate)
 
 import Ident
 import Interval
 import CoreCTT
 
 
-eval :: Env EnvEntry -> Term -> Value
+eval :: Env -> Term -> Value
 eval env t = case t of 
-    Var s -> case (lookupEnv env s) of
-        Left _            -> VVar s
-        Right (Val v)     -> v
-        Right (EDef ty e) -> eval env e
-    Universe -> VUniverse
-    Abst s t e -> VClosure s (eval env t) e env
+    Var s -> case (lookup s env) of
+        Nothing          -> Var s
+        Just (Val v)     -> v
+        Just (EDef ty e) -> eval env e
+    Universe -> Universe
+    Abst s t e -> Closure s (eval env t) e env
     App e1 e2 -> doApply (eval env e1) (eval env e2)
-    Nat -> VNat
-    Zero -> VZero
-    Succ t -> VSucc (eval env t)
+    Nat -> Nat
+    Zero -> Zero
+    Succ t -> Succ (eval env t)
     Ind ty base step n -> doInd ty' base' step' n'
         where ty'   = eval env ty
               base' = eval env base
               step' = eval env step
               n'    = eval env n
-    I -> VI
+    I -> I
     Sys sys -> doSys (evalSystem env sys)
     Partial phi t -> doPartial (evalFormula env phi) (eval env t)
-    --Restr phi u t -> doRestr (evalFormula env phi) (eval env u) (eval env t)
 
-evalFormula :: Env EnvEntry -> Formula -> Formula
+evalFormula :: Env -> Formula -> Formula
 evalFormula env ff = multipleSubst ff substs
-    where substs = toListEnv (getIVals env)
+    where substs = [] -- toListEnv (getIVals env) --TODO
 
-evalSystem :: Env EnvEntry -> System Term -> System Value
-evalSystem env sys = Map.fromList $ map (\(phi,t) -> (evalFormula env phi, eval env t)) (Map.toList sys)
+evalSystem :: Env -> System -> System
+evalSystem env sys = map (\(phi,t) -> (evalFormula env phi, eval env t)) sys
 
 
 -- Evaluates a closure
 doApply :: Value -> Value -> Value
-doApply (VClosure s tVal e env) arg = eval (extendEnv env s (Val arg)) e
-doApply neutral arg = VApp neutral arg
+doApply (Closure s tVal e env) arg = eval (extend env s (Val arg)) e
+doApply neutral arg = App neutral arg
 
 -- Evaluates nat-induction
 doInd :: Value -> Value -> Value -> Value -> Value
 doInd ty base step n = case n of
-    VZero     -> base
-    VSucc n'  -> doApply fun prev
+    Zero     -> base
+    Succ n'  -> doApply fun prev
         where
             fun = doApply step n
             prev = doInd ty base step n'    
-    otherwise -> VInd ty base step n --neutral value
+    otherwise -> Ind ty base step n --neutral value
 
-doSys :: System Value -> Value
-doSys sys = case Map.lookup FTrue sys of
-    Nothing -> VSys sys
+doSys :: System -> Value
+doSys sys = case lookup FTrue sys of
+    Nothing -> Sys sys
     Just v  -> v
 
 doPartial :: Formula -> Value -> Value
 doPartial ff v = case ff of
     FTrue -> v
-    _     -> VPartial ff v
+    _     -> Partial ff v
 
 readBack :: [Ident] -> Value -> Term
-readBack used (VVar s) = Var s
-readBack used VUniverse = Universe
-readBack used (VApp fun arg) = App (readBack used fun) (readBack used arg)
-readBack used VNat = Nat
-readBack used VZero = Zero
-readBack used (VSucc v) = Succ (readBack used v)
-readBack used VI = I
-readBack used (VSys sys) = Sys (Map.map (readBack used) sys)
-readBack used (VPartial phi v) = Partial phi (readBack used v)
-readBack used (VInd ty b e n) = Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n)
-readBack used fun@(VClosure s tVal e env) = let
+readBack used (App fun arg) = App (readBack used fun) (readBack used arg)
+readBack used (Succ v) = Succ (readBack used v)
+readBack used (Sys sys) = Sys (mapElems (readBack used) sys)
+readBack used (Partial phi v) = Partial phi (readBack used v)
+readBack used (Ind ty b e n) = Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n)
+readBack used fun@(Closure s tVal e env) = let
         s'   = newVar used s
         t'   = readBack (s' : used) tVal
-        eVal = doApply fun (VVar s')
+        eVal = doApply fun (Var s')
         e'   = readBack (s' : used) eVal
         in Abst s' t' e'
+readBack used v = v
 
 
-normalize :: Env EnvEntry -> Term -> Term
-normalize env e = readBack (getIdentsEnv env) (eval env e)
+normalize :: Env -> Term -> Term
+normalize env e = readBack (keys env) (eval env e)
 
 
 {- Linear head reduction -}
@@ -96,43 +90,74 @@ headRedV ctx t = eval emptyEnv t
 
 --Gets the least evaluated form of 'x' from context
 getLeastEval :: Ctx -> Ident -> Value
-getLeastEval (Env []) s = VVar s
-getLeastEval (Env ((s', Decl ty) : ctx)) s =
-    if s == s' then VVar s else getLeastEval (Env ctx) s
-getLeastEval (Env ((s', Def ty e) : ctx)) s =
-    if s == s' then eval emptyEnv e else getLeastEval (Env ctx) s
+getLeastEval ctx s = case lookup s ctx of
+    Just (Def _ e) -> eval emptyEnv e
+    otherwise      -> Var s
 
 --Do head reduction step
 headRed :: Ctx -> Term -> Term
 headRed ctx t = case t of
     Abst s t e -> Abst s t e'
-        where e' = headRed (extendEnv ctx s (Decl t)) e
+        where e' = headRed (extend ctx s (Decl t)) e
     Succ t     -> Succ (headRed ctx t) 
-    otherwise  -> readBack (getIdentsEnv ctx) (headRedV ctx t) 
+    otherwise  -> readBack (keys ctx) (headRedV ctx t) 
 
 
 {- Printing utilities (should be in AbsCTT but these need 'readBack') -}
 
-showValue :: Value -> PrintTermMod -> String
-showValue v = showTerm (readBack [] v)
+instance Show Term where
+    show t = printTerm' 0 (readBack [] t)
+
+printTerm' :: Int -> Term -> String
+printTerm' i t = case t of
+    Var s        -> show s
+    Universe     -> "U"
+    Abst s t e   -> par1 ++ abstS ++ par2
+        where abstS = if not (containsVar s e)
+                then --A -> B
+                    printTerm' (i+1) t ++ " -> " ++ printTerm' next e
+                else
+                    "[" ++ show s ++ ":" ++ printTerm' 0 t ++ "]" ++ printTerm' next e
+              next = case e of
+                Abst _ _ _ -> 0
+                otherwise  -> 0 --i+1
+    App fun arg  -> par1 ++ printTerm' (i+1) inner ++ " " ++ intercalate " " printedArgs ++ par2
+        where (inner,args) = collectApps (App fun arg) []
+              printedArgs  = map (printTerm' (i+1)) args
+    Nat          -> "N"
+    Zero         -> "0"
+    Succ t       -> if isNum then show (n + 1) else "S" ++ printTerm' (i+1) t
+        where (isNum,n) = isNumeral t
+
+    Ind ty b s n -> par1 ++ "ind-N " ++ (printTerm' (i+1) ty) ++ " " ++ (printTerm' (i+1) b) ++ " "
+         ++ (printTerm' (i+1) s) ++ " " ++ (printTerm' (i+1) n) ++ par2
+    I            -> "I"
+    Sys sys      -> showSystem sys
+    Partial phi t  -> "[" ++ show phi ++ "]" ++ printTerm' 0 t
+    Restr phi u t  -> "[" ++ show phi ++ " -> " ++ printTerm' 0 u ++ "]" ++ printTerm' 0 t
+
+    where (par1,par2) = if i == 0 then ("","") else ("(",")")
+
 
 showCtx :: Ctx -> String
-showCtx (Env clist) = "[" ++ List.intercalate ", " (map showEntry (reverse clist)) ++ "]"
+showCtx ctx = "[" ++ intercalate ", " (map showEntry (reverse ctx)) ++ "]"
 
 showOnlyShort :: String -> String
 showOnlyShort s = if length s > 150 then "..." else s
 
 showEntry :: (Ident,CtxEntry) -> String
-showEntry (s,Decl ty) = show s ++ " : " ++ showOnlyShort (showTerm ty AsType)
-showEntry (s,Def ty val) = show s ++ " : " ++ showOnlyShort (showTerm ty AsType) ++ " = " ++ showOnlyShort (showTerm val AsTerm)
+showEntry (s,Decl ty) = show s ++ " : " ++ showOnlyShort (show ty)
+showEntry (s,Def ty val) = show s ++ " : " ++ showOnlyShort (show ty) ++ " = " ++ showOnlyShort (show val)
 showEntry (s,Form ff) = show s ++ " = " ++ showOnlyShort (show ff)
 
-showEnv :: Env EnvEntry -> String
-showEnv (Env clist) = "[" ++ List.intercalate ", " (map showEnvEntry (reverse clist)) ++ "]"
+showEnv :: Env -> String
+showEnv env = "[" ++ intercalate ", " (map showEnvEntry (reverse env)) ++ "]"
 
 showEnvEntry :: (Ident,EnvEntry) -> String
-showEnvEntry (s,Val val) = show s ++ " -> " ++ showValue val AsTerm
-showEnvEntry (s,EDef ty val) = show s ++ " : " ++ showOnlyShort (showTerm ty AsType) ++ " = " ++ showOnlyShort (showTerm val AsTerm)
+showEnvEntry (s,Val val) = show s ++ " -> " ++ show val
+showEnvEntry (s,EDef ty val) = show s ++ " : " ++ showOnlyShort (show ty) ++ " = " ++ showOnlyShort (show val)
 showEnvEntry (s,IVal i) = show s ++ " -> " ++ show i
 
---TODO use `show` instead of `showTerm`
+
+showSystem :: System -> String
+showSystem sys = "[" ++ intercalate ", " (map (\(ff,t) -> "[" ++ show ff ++ "] " ++ show t) sys) ++ "]"

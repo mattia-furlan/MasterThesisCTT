@@ -82,8 +82,8 @@ rec_Bool : [C:U] C -> C -> Bool -> C = [C:U][x1:C][x2:C][x:Bool] If C x x1 x2 ; 
 {- Coproduct built using Bool -}
 
 prod' : U -> U -> U = [A:U][B:U][x:Bool] rec_Bool U A B x ;
-p1' : [A:U][B:U] prod' A B -> A = [A:U][B:U][p:prod' A B] p True;
-p2' : [A:U][B:U] prod' A B -> B = [A:U][B:U][p:prod' A B] p False;
+p1' : [A:U][B:U] prod' A B -> A = [A:U][B:U][p:prod' A B] p True ;
+p2' : [A:U][B:U] prod' A B -> B = [A:U][B:U][p:prod' A B] p False ;
 
 --does not work.. I need the inductor for Bool!
 --makeCouple : [A:U][B:U] A -> B -> prod A B = [A:U][B:U][a:A][b:B][x:Bool] rec_Bool ([y:Bool] rec_Bool U A B y) a b x ; 
