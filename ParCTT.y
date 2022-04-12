@@ -71,7 +71,7 @@ Term1 : Term2 { $1 }
 
 Term2 :: { CoreCTT.Term }
 Term2 : Term3 { $1 }
-      | Ident { CoreCTT.Var $1 }
+      | Ident { CoreCTT.Var $1 Nothing }
       | 'U' { CoreCTT.Universe }
       | 'N' { CoreCTT.Nat }
       | '0' { CoreCTT.Zero }
@@ -85,6 +85,7 @@ Term3 : '(' Term ')' { $2 }
 
 Toplevel :: { CoreCTT.Toplevel }
 Toplevel : Ident ':' Term '=' Term { CoreCTT.Definition $1 $3 $5 }
+         | Ident ':' Term { CoreCTT.Declaration $1 $3 }
          | Term { CoreCTT.Example $1 }
 
 ListToplevel :: { [CoreCTT.Toplevel] }

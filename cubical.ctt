@@ -1,9 +1,25 @@
+
+--system : [i:I][i = 0 \/ i = 1]N = [i:I][[i=0] 0 , [i=1] S 0] ;
+
+--system' : [i:I][i = 0 \/ i = 1]N = [j:I][[j=0] 0 , [j=1] S 0] ;
+
+-- systemI : [i:I][i = 0 \/ i = 1]I = [i:I][[i=0] i , [i=1] i] ; --rejected OK `I` cannot be codomain
+
+-- system' : [i:I][i = 0 \/ i = 1]N = [i:I][[i=0 \/ i = 1] 0 , [i=1] S 0] ; --rejected OK terms are not adjacent
+
+-- system : [i:I][i = 0]N = [j:I][[j=0] 0 , [j=1] S 0] ; --rejected OK formulas don't match
+
+-- system : [i:I]N = [i:I][[i = i] 0] ;
+
 Path : [A : U] A -> A -> U =
 	[A : U][a0 : A][a1 : A][i : I] [(i = 0) \/ (i = 1) -> [[i = 0] a0, [i = 1] a1]] A ;
 
-system : [i:I][i = 0 \/ i = 1]N = [i:I][[i=0] 0 , [i=1] S 0] ;
+refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
 
-refl : [A : U][a : A] Path A a a = [i : I] a ;
+AT : U ;
+a : AT ;
+b : AT ;
+p : Path AT a b ;
 
 {-
 

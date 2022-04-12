@@ -3,7 +3,7 @@
 
 module Interval where
 
-import qualified Data.List as List
+import Data.List (intercalate,nub,delete)
 import Data.Set (Set(..), singleton, empty, toList, fromList)
 import qualified Data.Set  as Set
 import qualified Data.Map  as Map
@@ -40,8 +40,8 @@ data Formula = FTrue
 
 instance Show Formula where
     show ff = case ff of
-        FTrue -> "1F"
-        FFalse -> "0F"
+        FTrue -> "True" --1F"
+        FFalse -> "False" -- 0F"
         Eq0 s -> show s ++ " = 0"
         Eq1 s -> show s ++ " = 1"
         Diag s1 s2 -> "(" ++ show s1 ++ " = " ++ show s2 ++ ")"
@@ -54,13 +54,13 @@ trueDNF :: DNFFormula
 trueDNF = Set.singleton (Set.empty)
 
 showDNF :: DNFFormula -> String
-showDNF dnf = List.intercalate " \\/ " (map showConj (toList dnf))
+showDNF dnf = intercalate " \\/ " (map showConj (toList dnf))
     where showConj :: Set (Ident,Interval) -> String
-          showConj conj = "(" ++ List.intercalate " /\\ " (map (\(s,i) -> show s ++ " = " ++ show i) (toList conj)) ++ ")"
+          showConj conj = "(" ++ intercalate " /\\ " (map (\(s,i) -> show s ++ " = " ++ show i) (toList conj)) ++ ")"
 
 
 getFormulaNames :: Formula -> [Ident]
-getFormulaNames = List.nub . getFormulaNames' --remove duplicates
+getFormulaNames = nub . getFormulaNames' --remove duplicates
     where getFormulaNames' :: Formula -> [Ident]
           getFormulaNames' ff = case ff of
                 FTrue -> []
@@ -109,7 +109,10 @@ getBoundary ff = foldOr disjunctions
           disjunctions = map (\s -> (Eq0 s) :\/: (Eq1 s)) names
 
 foldOrDNF :: [Set (Ident,Interval)] -> DNFFormula
-foldOrDNF conjs = if Set.empty `elem` conjs then trueDNF else fromList conjs
+foldOrDNF conjs = if Set.empty `elem` conjs then
+        trueDNF
+    else
+        Set.filter (not . Set.null) (fromList conjs)
 
 toDNF :: Formula -> DNFFormula
 toDNF ff = case ff of
@@ -135,17 +138,15 @@ fromDNF (dnf) = foldOr $ map (foldAnd . (map coupleToAtom) . toList) (toList dnf
 simplifyDNF :: DNFFormula -> DNFFormula
 simplifyDNF (dnf) = if Set.empty `Set.member` dnf then
         trueDNF
-    else Set.map simplifyConj1 dnf'
+    --simplification of `i=0 /\ i=1` gets done in `fromDirEnv`
+    else foldOrDNF $ concatMap (toConj . toDirEnv . toList) (toList dnf')
     where
         dnf' = Set.filter (not . Set.null) dnf
-
-        simplifyConj1 :: Set (Ident,Interval) -> Set (Ident,Interval)
-        simplifyConj1 conj = foldl doDelete conj toDelete
-            where
-                names = map fst (Set.toList conj)
-                toDelete = filter (containsBoth conj) names
-                containsBoth conj' s = length (filter ( == s) names) > 1
-                doDelete conj' s = Set.filter ((/= s) . fst) conj'
+        toConj :: DirEnv -> [Set (Ident,Interval)]
+        toConj dirs@(ones,zeros,_) = if any (`elem` ones) zeros || any (`elem` zeros) ones then
+                []
+            else
+                [fromList (toSubsts dirs)]
 
 simplify :: Formula -> Formula
 simplify = fromDNF . simplifyDNF . toDNF
@@ -154,42 +155,42 @@ toDNFList :: Formula -> [[(Ident,Interval)]]
 toDNFList ff = Set.toList (Set.map Set.toList dnf)
     where dnf = simplifyDNF (toDNF ff)
 
-subst :: Formula -> (Ident,Interval) -> Formula
-subst ff (s,i) = case ff of
+singleSubst :: Formula -> (Ident,Interval) -> Formula
+singleSubst ff (s,i) = case ff of
     FTrue -> FTrue
     FFalse -> FFalse
     Eq0 s' -> if s == s' then 
             case i of 
                 IZero  -> FTrue
                 IOne   -> FFalse
-                IVar x -> Diag s' x
+                IVar x -> Eq0 x
         else
             Eq0 s'
     Eq1 s' -> if s == s' then 
             case i of 
                 IZero  -> FFalse
                 IOne   -> FTrue
-                IVar x -> Diag s' x
+                IVar x -> Eq1 x
         else
             Eq1 s'
     Diag s1 s2 -> if s == s1 then 
             case i of 
                 IZero  -> Eq0 s2
                 IOne   -> Eq1 s2
-                IVar x -> Diag s2 x
+                IVar x -> Diag (if s == s2 then x else s2) x
         else if s == s2 then 
-            case i of 
+            case i of
                 IZero  -> Eq0 s1
                 IOne   -> Eq1 s1
-                IVar x -> Diag s1 x
+                IVar x -> Diag (if s == s1 then x else s1) x
         else
             Diag s1 s2
-    ff1 :/\: ff2 -> (subst ff1 (s,i)) :/\: (subst ff2 (s,i))
-    ff1 :\/: ff2 -> (subst ff1 (s,i)) :\/: (subst ff2 (s,i))
+    ff1 :/\: ff2 -> (singleSubst ff1 (s,i)) `makeAnd` (singleSubst ff2 (s,i))
+    ff1 :\/: ff2 -> (singleSubst ff1 (s,i)) `makeOr`  (singleSubst ff2 (s,i))
 
 
 multipleSubst :: Formula -> [(Ident,Interval)] -> Formula
-multipleSubst ff list = foldl subst ff list
+multipleSubst ff list = foldl singleSubst ff list
 
 forall :: Ident -> Formula -> Formula
 forall s ff = case ff of
@@ -207,12 +208,8 @@ imp ff1 ff2 = all (\conj1 -> any (\conj2 -> conj2 `Set.isSubsetOf` conj1) dnf2) 
     where dnf1 = toList . simplifyDNF $ toDNF ff1
           dnf2 = toList . simplifyDNF $ toDNF ff2  --requires simplification!
 
-{- Debug only -}
---dnf :: Formula -> String
---dnf = showDNF . toDNF
-
 equalFormulas :: Formula -> Formula -> Bool
-equalFormulas ff1 ff2 = (toDNF ff1) == (toDNF ff2)
+equalFormulas ff1 ff2 = (simplify ff1) == (simplify ff2)
 
 checkCongruence :: Formula -> Formula -> Formula -> Bool
 checkCongruence ff ff1 ff2 = checkCongruenceDNF (toDNF ff) ff1 ff2
@@ -221,8 +218,94 @@ checkCongruenceDNF :: DNFFormula -> Formula -> Formula -> Bool
 checkCongruenceDNF dnf ff1 ff2 = all (\conj -> checkCongruenceConj (toList conj) ff1 ff2) (toList dnf)
     where
         checkCongruenceConj [] ff' ff'' = equalFormulas ff' ff''
-        checkCongruenceConj (atom:conj) ff' ff'' = checkCongruenceConj conj (subst ff' (s,i)) (subst ff'' (s,i))
+        checkCongruenceConj (atom:conj) ff' ff'' = checkCongruenceConj conj (singleSubst ff' (s,i)) (singleSubst ff'' (s,i))
             where (s,i) = atom
+
+
+{- Directions enviroment -}
+
+type DirEnv = ([Ident],[Ident],[[Ident]]) --zeros, ones, diags
+
+emptyDirEnv :: DirEnv
+emptyDirEnv = ([],[],[])
+
+lookupDir :: Ident -> DirEnv -> Maybe Interval
+lookupDir s (zeros,ones,diags) = if s `elem` zeros then
+        Just IZero
+    else if s `elem` ones then
+        Just IOne
+    else case filter (s `elem`) diags of
+        []     -> Nothing
+        part:_ -> Just (IVar (head part))
+
+subst :: DirEnv -> Formula -> Formula
+subst (zeros,ones,diags) ff = foldl singleSubst ff substs
+    where substs  = substs0 ++ substs1 ++ substsd
+          substs0 = map (\s -> (s,IZero)) zeros
+          substs1 = map (\s -> (s,IOne)) ones
+          substsd = concatMap (\part -> map (\s -> (s,IVar (head part))) part) diags
+
+findPartition :: [[Ident]] -> Ident -> [Ident]
+findPartition diags s = case filter (s `elem`) diags of
+        [] -> [s]
+        l  -> head l
+
+addZero :: DirEnv -> Ident -> DirEnv
+addZero (zeros,ones,diags) s = let
+    toadd = case filter (s `elem`) diags of
+        [] -> [s]
+        l  -> head l
+    in (toadd ++ zeros,ones,delete toadd diags)
+
+addOne :: DirEnv -> Ident -> DirEnv
+addOne (zeros,ones,diags) s = let
+    toadd = case filter (s `elem`) diags of
+        [] -> [s]
+        l  -> head l
+    in (zeros,toadd ++ ones,delete toadd diags)
+
+addDiag :: DirEnv -> Ident -> Ident -> DirEnv
+addDiag dirs@(zeros,ones,diags) s1 s2 =
+    if s1 == s2 then
+        dirs
+    else if s1 `elem` zeros then
+        addZero dirs s2
+    else if s2 `elem` zeros then
+        addZero dirs s1
+    else if s1 `elem` ones then
+        addOne dirs s2
+    else if s2 `elem` ones then
+        addZero dirs s1
+    else let diags' = [if s1 `elem` set then s2 : set else if s2 `elem` set then s1 : set
+                        else set | set <- diags]
+             diags'' = diags' ++  --adding a new partition if s1,s2 are new names (i.e. not found in the partitions list)
+                if not (s1 `elem` (concat diags') || s2 `elem` (concat diags')) then [[s1,s2]] else []
+             par1 = findPartition diags'' s1
+             par2 = findPartition diags'' s2
+             --eventually join the two partitions (ex. [i,k] [j,k,l] gets joined into [i,j,k,l])
+             diags''' = if par1 /= par2 then (delete par2 (delete par1 diags'')) ++ [par1++par2] else diags''
+        in (zeros,ones,diags''')
+
+addConj :: [(Ident,Interval)] -> DirEnv -> DirEnv
+addConj conj dirs = foldl addAtomic dirs conj
+    where
+        addAtomic :: DirEnv -> (Ident,Interval) -> DirEnv
+        addAtomic dirs (s,i) = case i of
+            IZero   -> addZero dirs s 
+            IOne    -> addOne dirs s 
+            IVar s' -> addDiag dirs s s'
+
+toSubsts :: DirEnv -> [(Ident,Interval)]
+toSubsts (zeros,ones,diags) = substs0 ++ substs1 ++ substsd
+    where substs0 = map (\s -> (s,IZero)) zeros
+          substs1 = map (\s -> (s,IOne)) ones
+          substsd = concatMap (\part -> map (\s -> (s,IVar (head part))) part) diags
+
+toDirEnv :: [(Ident,Interval)] -> DirEnv
+toDirEnv conj = addConj conj emptyDirEnv
+
+fromDirEnv :: DirEnv -> [(Ident,Interval)]
+fromDirEnv = toSubsts
 
 {- Examples -}
 

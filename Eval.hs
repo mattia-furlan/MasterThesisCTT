@@ -6,11 +6,12 @@ import Ident
 import Interval
 import CoreCTT
 
+import Debug.Trace
 
 eval :: Env -> Term -> Value
-eval env t = case t of 
-    Var s -> case (lookup s env) of
-        Nothing          -> Var s
+eval env t = case t of
+    Var s _ -> case (lookup s env) of
+        Nothing          -> t -- Var s (lookupType ctx s)
         Just (Val v)     -> v
         Just (EDef ty e) -> eval env e
     Universe -> Universe
@@ -24,22 +25,38 @@ eval env t = case t of
               base' = eval env base
               step' = eval env step
               n'    = eval env n
-    I -> I
+    I  -> I
+    I0 -> I0
+    I1 -> I1
     Sys sys -> doSys (evalSystem env sys)
     Partial phi t -> doPartial (evalFormula env phi) (eval env t)
+    Restr phi u t -> Restr (evalFormula env phi) (eval env u) (eval env t)
 
 evalFormula :: Env -> Formula -> Formula
-evalFormula env ff = multipleSubst ff substs
-    where substs = [] -- toListEnv (getIVals env) --TODO
+evalFormula env ff = simplify $ multipleSubst ff env'
+    where getIVal :: (Ident,EnvEntry) -> [(Ident,Interval)]
+          getIVal (s,v) = case v of
+              Val I0         -> [(s,IZero)]
+              Val I1         -> [(s,IOne)]
+              Val (Var s' _) -> [(s,IVar s')]
+              EDef I t       -> [(s,snd $ head $ getIVal (s,Val t))]
+              _              -> []
+          env' = concatMap getIVal env
 
 evalSystem :: Env -> System -> System
 evalSystem env sys = map (\(phi,t) -> (evalFormula env phi, eval env t)) sys
 
+simplifySystem :: DirEnv -> System -> Value
+simplifySystem dirs sys = doSys $ map (\(phi,v) -> (subst dirs phi,v)) sys
 
 -- Evaluates a closure
 doApply :: Value -> Value -> Value
 doApply (Closure s tVal e env) arg = eval (extend env s (Val arg)) e
-doApply neutral arg = App neutral arg
+doApply neutral arg = case neutral of
+    Var s (Just (Closure s' I ty rho)) -> case doApply (Closure s' I ty rho) arg of
+        Restr FTrue u _ -> u
+        otherwise       -> App neutral arg
+    otherwise -> App neutral arg
 
 -- Evaluates nat-induction
 doInd :: Value -> Value -> Value -> Value -> Value
@@ -48,7 +65,7 @@ doInd ty base step n = case n of
     Succ n'  -> doApply fun prev
         where
             fun = doApply step n
-            prev = doInd ty base step n'    
+            prev = doInd ty base step n'
     otherwise -> Ind ty base step n --neutral value
 
 doSys :: System -> Value
@@ -65,12 +82,13 @@ readBack :: [Ident] -> Value -> Term
 readBack used (App fun arg) = App (readBack used fun) (readBack used arg)
 readBack used (Succ v) = Succ (readBack used v)
 readBack used (Sys sys) = Sys (mapElems (readBack used) sys)
-readBack used (Partial phi v) = Partial phi (readBack used v)
+readBack used (Partial phi ty) = Partial phi (readBack used ty)
+readBack used (Restr phi u ty) = Restr phi (readBack used u) (readBack used ty)
 readBack used (Ind ty b e n) = Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n)
 readBack used fun@(Closure s tVal e env) = let
         s'   = newVar used s
         t'   = readBack (s' : used) tVal
-        eVal = doApply fun (Var s')
+        eVal = doApply fun (Var s' Nothing)
         e'   = readBack (s' : used) eVal
         in Abst s' t' e'
 readBack used v = v
@@ -83,7 +101,7 @@ normalize env e = readBack (keys env) (eval env e)
 {- Linear head reduction -}
 
 headRedV :: Ctx -> Term -> Value
-headRedV ctx (Var s) = getLeastEval ctx s
+headRedV ctx (Var s _) = getLeastEval ctx s
 headRedV ctx (App k n) = doApply (headRedV ctx k) (eval emptyEnv n)
 headRedV ctx (Ind ty b s k) = doInd (eval emptyEnv ty) (eval emptyEnv b) (eval emptyEnv s) (headRedV ctx k)
 headRedV ctx t = eval emptyEnv t
@@ -92,7 +110,7 @@ headRedV ctx t = eval emptyEnv t
 getLeastEval :: Ctx -> Ident -> Value
 getLeastEval ctx s = case lookup s ctx of
     Just (Def _ e) -> eval emptyEnv e
-    otherwise      -> Var s
+    otherwise      -> Var s Nothing
 
 --Do head reduction step
 headRed :: Ctx -> Term -> Term
@@ -110,7 +128,7 @@ instance Show Term where
 
 printTerm' :: Int -> Term -> String
 printTerm' i t = case t of
-    Var s        -> show s
+    Var s _      -> show s
     Universe     -> "U"
     Abst s t e   -> par1 ++ abstS ++ par2
         where abstS = if not (containsVar s e)
@@ -132,10 +150,12 @@ printTerm' i t = case t of
     Ind ty b s n -> par1 ++ "ind-N " ++ (printTerm' (i+1) ty) ++ " " ++ (printTerm' (i+1) b) ++ " "
          ++ (printTerm' (i+1) s) ++ " " ++ (printTerm' (i+1) n) ++ par2
     I            -> "I"
+    I0           -> "I0"
+    I1           -> "I1"
     Sys sys      -> showSystem sys
     Partial phi t  -> "[" ++ show phi ++ "]" ++ printTerm' 0 t
     Restr phi u t  -> "[" ++ show phi ++ " -> " ++ printTerm' 0 u ++ "]" ++ printTerm' 0 t
-
+    --Closure{}    -> "closure"
     where (par1,par2) = if i == 0 then ("","") else ("(",")")
 
 

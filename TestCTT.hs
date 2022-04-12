@@ -12,6 +12,7 @@ import LexCTT   ( Token )
 import ParCTT   ( pTerm, pToplevel, pProgram, myLexer )
 
 import Ident
+import Interval
 import CoreCTT
 import Eval
 import TypeChecker
@@ -21,7 +22,7 @@ type Err = Either String
 type ReplState = (Ctx,Term,[Ident]) -- Current context, last term checked, locked names
 
 initReplState :: ReplState
-initReplState = (emptyCtx,Zero,[])
+initReplState = ([(Ident "i0",Def I I0),(Ident "i1",Def I I1)],Zero,[])
 
 runFile :: FilePath -> StateT ReplState IO Bool
 runFile f = do
@@ -54,7 +55,7 @@ checkProgram (Program (toplevel : decls)) = do
 --Checks if a term contains undeclared variables (True = OK)
 checkVars :: Ctx -> Term -> Bool
 checkVars ctx t = case t of
-    Var s         -> isJust $ lookup s ctx
+    Var s _       -> isJust $ lookup s ctx
     Universe      -> True
     Abst s t e    -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
     App fun arg   -> checkVars ctx fun && checkVars ctx arg
@@ -78,6 +79,19 @@ checkSingleToplevel (Example t) = do
         return False
     else
         checkSingleToplevel' (Example t)
+checkSingleToplevel decl@(Declaration s t) = do
+    (ctx,_,_) <- get
+    if not (checkTermShadowing [] t) then do
+        liftIO . showErr $ "term '" ++ show t ++ "' contains shadowed variables"
+        return False
+    else if not (checkVars ctx t) then do
+        liftIO . showErr $ "term '" ++ show t ++ "' contains undeclared variables"
+        return False
+    else case lookup s ctx of
+        Nothing -> checkSingleToplevel' decl
+        Just _  -> do
+            liftIO . showErr $ "context already contains name '" ++ show s ++ "'"
+            return False
 checkSingleToplevel def@(Definition s t e) = do
     (ctx,_,_) <- get
     if not (checkTermShadowing [s] t && checkTermShadowing [s] e) then do --avoid "x : N->N = [x:N]x" 
@@ -96,7 +110,7 @@ checkSingleToplevel' :: Toplevel -> StateT ReplState IO Bool
 checkSingleToplevel' (Example t) = do
     (unlockedCtx,_,lockedNames) <- get
     let ctx = getLockedCtx lockedNames unlockedCtx
-    let ty = inferType ctx t
+    let ty = inferType ctx emptyDirEnv t
     case ty of
         Left err -> do
            liftIO $ showErr err
@@ -106,6 +120,18 @@ checkSingleToplevel' (Example t) = do
             let norm = normalize (ctxToEnv ctx) t --since 't' typechecks, 't' must have a normal form
             liftIO . putStrLn $ "'" ++ show t ++ "' reduces to " ++ show norm
             put (ctx,t,lockedNames)
+            return True
+checkSingleToplevel' (Declaration s t) = do
+    (unlockedCtx,ans,lockedNames) <- get
+    let ctx = getLockedCtx lockedNames unlockedCtx
+    liftIO . putStrLn $ "\nType-checking term '" ++ show s ++ "' of type '" ++ show t  ++ "'"
+    case addDecl ctx (s,t) of
+        Left err -> do
+            liftIO . showErr $ err
+            return False
+        Right ctx' -> do
+            liftIO . putStrLn $ "Declaration check OK!"
+            put (ctx',ans,lockedNames)
             return True
 checkSingleToplevel' (Definition s t e) = do
     (unlockedCtx,ans,lockedNames) <- get
@@ -120,6 +146,7 @@ checkSingleToplevel' (Definition s t e) = do
             liftIO . putStrLn $ "Type check OK!"
             put (ctx',ans,lockedNames)
             return True
+
 
 doRepl :: StateT ReplState IO ()
 doRepl = do
@@ -183,10 +210,16 @@ doRepl = do
 -- Adds a definition to the current context 
 addDef :: Ctx -> (Ident,Term,Term) -> Either ErrorString Ctx
 addDef ctx (s,t,e) = do
-    checkType ctx t Universe -- Is 't' really a type?
+    checkType ctx emptyDirEnv t Universe -- Is 't' really a type?
     let tVal = eval (ctxToEnv ctx) t
-    checkType ctx e tVal -- Has 'e' type 't'?
+    checkType ctx emptyDirEnv e tVal -- Has 'e' type 't'?
     Right $ extend ctx s (Def t e)
+
+-- Adds a definition to the current context 
+addDecl :: Ctx -> (Ident,Term) -> Either ErrorString Ctx
+addDecl ctx (s,t) = do
+    checkType ctx emptyDirEnv t Universe -- Is 't' really a type?
+    Right $ extend ctx s (Decl t)
 
 printCtxLn :: Ctx -> IO ()
 printCtxLn ctx = mapM_ (putStrLn . showEntry) (reverse ctx)
