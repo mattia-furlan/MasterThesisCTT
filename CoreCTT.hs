@@ -25,6 +25,7 @@ data Term
     | Sys System
     | Partial Formula Term
     | Restr Formula Term Term
+    | Comp Formula Term Term Term
     {- Closure (values only) -}
     | Closure Ident Value Term (Ctx,DirEnv,Env) 
   deriving (Eq, Ord)
@@ -91,6 +92,7 @@ instance SyntacticObject Term where
         Sys sys       -> concatMap vars (keys sys) ++ concatMap vars (elems sys)
         Partial phi t -> vars phi ++ vars t
         Restr phi u t -> vars phi ++ vars u ++ vars t
+        Comp psi x0 fam u -> vars psi ++ vars x0 ++ vars fam ++ vars u
     freeVars t = case t of
         Var s _       -> [s]
         Universe      -> []
@@ -106,6 +108,7 @@ instance SyntacticObject Term where
         Sys sys       -> concatMap freeVars (keys sys) ++ concatMap freeVars (elems sys)
         Partial phi t -> freeVars phi ++ freeVars t
         Restr phi u t -> freeVars phi ++ freeVars u ++ freeVars t
+        Comp psi x0 fam u -> freeVars psi ++ freeVars x0 ++ freeVars fam ++ freeVars u
 
 instance SyntacticObject Formula where
     vars ff = case ff of
@@ -137,6 +140,7 @@ checkTermShadowing vars t = case t of
     Sys sys             -> all (checkTermShadowing vars) (elems sys)
     Partial phi t       -> checkTermShadowing vars t
     Restr phi u t       -> checkTermShadowing vars u && checkTermShadowing vars t
+    Comp psi x0 fam u   -> checkTermShadowing vars x0 && checkTermShadowing vars fam && checkTermShadowing vars u
 
 
 {- Printing functions are in 'Eval.hs' -}

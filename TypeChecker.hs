@@ -137,23 +137,16 @@ class Convertible a where
     conv :: a -> a -> Bool
     conv = conv' (0, Map.empty, Map.empty)
 
-{-
-convPartial :: Ctx -> DirEnv -> Formula -> Term -> Term -> Bool
-convPartial ctx dirs ff t1 t2 = all (\conj -> myTrace ("[convPartial] conj = " ++ show conj ++ ", t1 = " ++ show t1 ++ ", t2 = " ++ show t2 ++ ", t1Val = " ++ show (eval ctx (toDirEnv conj) (ctxToEnv ctx) t1) ++ ", t2Val = " ++ show (eval ctx (toDirEnv conj) (ctxToEnv ctx) t2)) $
-    conv dirs (eval ctx (toDirEnv conj) (ctxToEnv ctx) t1) (eval ctx (toDirEnv conj) (ctxToEnv ctx) t2)) conjs
-    where conjs = toDNFList ff
--}
 
 convPartial :: Formula -> Value -> Value -> Bool
 convPartial ff t1 t2 = all (\conj -> myTrace ("[convPartial] conj = " ++ show conj ++ ", t1 = " ++ show t1 ++ ", t2 = " ++ show t2 ++ ", t1vs = " ++  show (simplifyValue (toDirEnv conj) t1) ++ ", t2vs = " ++ show (simplifyValue (toDirEnv conj) t2)) $
     conv (simplifyValue (toDirEnv conj) t1) (simplifyValue (toDirEnv conj) t2)) conjs
     where conjs = toDNFList ff
 
-
 instance Convertible Formula where
     conv' _ ff1 ff2 = equalFormulas ff1 ff2
 
-instance Convertible Term where
+instance Convertible Value where
     conv' info@(i,env1,env2) v1 v2 = myTrace ("[conv] v1 = " ++ show v1 ++ ", v2 = " ++ show v2) $  v1 == v2 || case (v1,v2) of
         (Closure s1 t1 e1 (ctx1,dirs1,rho1),Closure s2 t2 e2 (ctx2,dirs2,rho2)) -> let
             var = newVar (vars e1 ++ vars e2 ++ Map.keys env1 ++ Map.keys env2) s1
@@ -173,16 +166,12 @@ instance Convertible Term where
         (I0,I0)             -> True
         (I1,I1)             -> True
         (Sys sys1,Sys sys2) -> conv' info sys1 sys2
-        -- (Sys sys1,v2)       -> conv' info dirs (simplifyValue dirs (Sys sys1)) v2
-        -- (v1,Sys sys2)       -> myTrace ("sys2' = " ++ show (simplifyValue dirs (Sys sys2))) $ conv' info dirs v1 (simplifyValue dirs (Sys sys2))
         (Partial phi1 v1,Partial phi2 v2) -> conv' info phi1 phi2 && conv' info v1 v2
         {- Neutrals -}
         (Var s1 _,Var s2 _) -> case (Map.lookup s1 env1, Map.lookup s2 env2) of
             (Nothing,Nothing) -> s1 == s2 --free variables
             (Just i,Just j)   -> i == j   --bound variables
             otherwise         -> False    --one free, one bound
-        -- (App fun1 arg1,v2) | isIAbst fun1 -> myTrace ("App,v2") $ conv' info dirs (fun1 @@ arg1) v2
-        -- (v1,App fun2 arg2) | isIAbst fun2 -> myTrace ("v1,App") $ conv' info dirs v1 (fun2 @@ arg2)
         (App fun1 arg1,App fun2 arg2) -> conv' info fun1 fun2 && conv' info arg1 arg2
         (Ind ty1 b1 s1 n1,Ind ty2 b2 s2 n2) ->
             conv' info ty1 ty2 && conv' info b1  b2 &&

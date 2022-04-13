@@ -56,9 +56,7 @@ evalSystem :: Ctx -> DirEnv -> Env -> System -> System
 evalSystem ctx dirs env sys = myTrace ("[evalSystem] sys = " ++ show sys ++ ", dirs = " ++ show dirs) $
     map (\(phi,t) -> (evalFormula dirs phi, eval ctx dirs env t)) sys
 
---simplifySystem :: DirEnv -> System -> Value
---simplifySystem dirs sys = doSys $ map (\(phi,v) -> (subst dirs phi,v)) sys
-
+--Applies substitutions to already formed values (needed when calling `conv`)
 simplifyValue :: DirEnv -> Value -> Value
 simplifyValue dirs (Var s mty) = case lookupDir s dirs of
     Nothing -> Var s mty
@@ -72,13 +70,9 @@ simplifyValue dirs v = v
 doApply :: Value -> Value -> Value
 doApply (Closure s tVal e (ctx,dirs,env)) arg = case tVal of
     I -> eval (extend ctx s (Decl I)) (addConj [(s,toInterval arg)] dirs) env e
-    _ -> eval ctx dirs (extend env s (Val arg)) e  --I don't need to add `t` to `ctx`
-doApply neutral arg = neutral @@ arg --App neutral arg
+    _ -> eval ctx dirs (extend env s (Val arg)) e  -- I don't need to add `t` to `ctx` (?)
+doApply neutral arg = neutral @@ arg -- e.g. reduce `p0` to `a` if `p : Path A a b`
 
-isIAbst :: Value -> Bool
-isIAbst v = case v of
-    Var s (Just (Closure s' I ty (ctx,dirs,rho))) -> True
-    _                                        -> False
 
 (@@) :: Value -> Value -> Value
 neutral @@ arg = myTrace ("[@@] " ++ show neutral ++ " @@ " ++ show arg) $ case neutral of
@@ -86,14 +80,6 @@ neutral @@ arg = myTrace ("[@@] " ++ show neutral ++ " @@ " ++ show arg) $ case 
         Restr FTrue u _ -> myTrace ("[@@] Restr FTrue u _, x = " ++ show x ++ "  ==> evals to " ++ show u) $ u
         otherwise       -> myTrace ("[@@] otherwise, x = " ++ show x) $ App neutral arg
     otherwise -> App neutral arg
-
---TODO is this needed? YES (needs simplification)
-{-doIApp :: DirEnv -> Value -> Value -> Value
-doIApp dirs neutral arg = case neutral of
-    Var s (Just (Closure s' I ty (ctx,rho))) -> let x = simplifyValue dirs $ doApply (Closure s' I ty (ctx,rho)) arg in case x of
-        Restr FTrue u _ -> myTrace ("Restr FTrue u _, x = " ++ show x) $ u
-        otherwise       -> myTrace ("otherwise, x = " ++ show x) $ App neutral arg
-    otherwise -> App neutral arg-}
 
 -- Evaluates nat-induction
 doInd :: Value -> Value -> Value -> Value -> Value

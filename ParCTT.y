@@ -47,7 +47,8 @@ import LexCTT
   '[' { PT _ (TS _ 15) }
   '\\/' { PT _ (TS _ 16) }
   ']' { PT _ (TS _ 17) }
-  'ind' { PT _ (TS _ 18) }
+  'comp' { PT _ (TS _ 18) }
+  'ind' { PT _ (TS _ 19) }
   L_Ident  { PT _ (TV $$) }
 
 %%
@@ -77,6 +78,7 @@ Term2 : Term3 { $1 }
       | '0' { CoreCTT.Zero }
       | 'S' Term2 { CoreCTT.Succ $2 }
       | 'ind' Term2 Term2 Term2 Term2 { CoreCTT.Ind $2 $3 $4 $5 }
+      | 'comp' Formula Term2 Term2 Term2 { CoreCTT.Comp $2 $3 $4 $5 }
       | 'I' { CoreCTT.I }
 
 Term3 :: { CoreCTT.Term }

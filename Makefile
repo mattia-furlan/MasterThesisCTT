@@ -17,18 +17,13 @@ ALEX_OPTS  = --ghc
 
 all : TestCTT
 
-# Rules for building the parser.
-
-CoreCTT.hs LexCTT.x ParCTT.y PrintCTT.hs TestCTT.hs : CTT.cf
-#	bnfc --haskell CTT.cf
-
 %.hs : %.y
 	${HAPPY} ${HAPPY_OPTS} $<
 
 %.hs : %.x
 	${ALEX} ${ALEX_OPTS} $<
 
-TestCTT : CoreCTT.hs LexCTT.hs ParCTT.hs PrintCTT.hs TestCTT.hs TypeChecker.hs Eval.hs Interval.hs Ident.hs
+TestCTT : CoreCTT.hs LexCTT.hs ParCTT.hs TestCTT.hs TypeChecker.hs Eval.hs Interval.hs Ident.hs
 	${GHC} ${GHC_OPTS} $@
 
 # Rules for cleaning generated files.

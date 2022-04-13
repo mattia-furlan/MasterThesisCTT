@@ -147,7 +147,7 @@ eitherResIdent tv s = treeFind resWords
                               | s == a = t
 
 resWords :: BTree
-resWords = b "=" 10 (b "/\\" 5 (b "," 3 (b ")" 2 (b "(" 1 N N) N) (b "->" 4 N N)) (b ":" 8 (b "1" 7 (b "0" 6 N N) N) (b ";" 9 N N))) (b "[" 15 (b "S" 13 (b "N" 12 (b "I" 11 N N) N) (b "U" 14 N N)) (b "]" 17 (b "\\/" 16 N N) (b "ind" 18 N N)))
+resWords = b "=" 10 (b "/\\" 5 (b "," 3 (b ")" 2 (b "(" 1 N N) N) (b "->" 4 N N)) (b ":" 8 (b "1" 7 (b "0" 6 N N) N) (b ";" 9 N N))) (b "[" 15 (b "S" 13 (b "N" 12 (b "I" 11 N N) N) (b "U" 14 N N)) (b "comp" 18 (b "]" 17 (b "\\/" 16 N N) N) (b "ind" 19 N N)))
    where b s n = let bs = s
                  in  B bs (TS bs n)
 
