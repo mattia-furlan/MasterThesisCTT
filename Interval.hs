@@ -307,6 +307,13 @@ toDirEnv conj = addConj conj emptyDirEnv
 fromDirEnv :: DirEnv -> [(Ident,Interval)]
 fromDirEnv = toSubsts
 
+(+++) :: DirEnv -> DirEnv -> DirEnv
+dirs1 +++ dirs2 = toDirEnv $ fromDirEnv dirs1 ++ fromDirEnv dirs2
+{-dirs1@(zeros1,ones1,diags1) +++ dirs2@(zeros2,ones2,diags2) = dirs'''
+    where dirs'  = foldl addZero dirs1 zeros2
+          dirs'' = foldl addOne dirs' ones2
+          dirs''' = -}
+
 {- Examples -}
 
 i = Ident "i"

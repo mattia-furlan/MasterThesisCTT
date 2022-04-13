@@ -8,55 +8,92 @@ import CoreCTT
 
 import Debug.Trace
 
-eval :: Env -> Term -> Value
-eval env t = case t of
-    Var s _ -> case (lookup s env) of
-        Nothing          -> t -- Var s (lookupType ctx s)
-        Just (Val v)     -> v
-        Just (EDef ty e) -> eval env e
+
+myTrace s x = x -- trace s x
+
+eval :: Ctx -> DirEnv -> Env -> Term -> Value
+eval ctx dirs env t =  case t of
+    Var s mty -> case lookupDir s dirs of
+        Nothing -> case lookup s env of
+            Nothing          -> case mty of
+                Nothing -> Var s (Just $ eval ctx dirs env $ lookupType ctx s)
+                Just ty -> Var s (Just ty)
+            Just (Val v)     -> v
+            Just (EDef ty e) -> eval ctx dirs env e
+        Just i -> toValue i
     Universe -> Universe
-    Abst s t e -> Closure s (eval env t) e env
-    App e1 e2 -> doApply (eval env e1) (eval env e2)
+    Abst s t e -> Closure s (eval ctx dirs env t) e (ctx,dirs,env)
+    App e1 e2 -> doApply (eval ctx dirs env e1) (eval ctx dirs env e2)
     Nat -> Nat
     Zero -> Zero
-    Succ t -> Succ (eval env t)
+    Succ t -> Succ (eval ctx dirs env t)
     Ind ty base step n -> doInd ty' base' step' n'
-        where ty'   = eval env ty
-              base' = eval env base
-              step' = eval env step
-              n'    = eval env n
+        where ty'   = eval ctx dirs env ty
+              base' = eval ctx dirs env base
+              step' = eval ctx dirs env step
+              n'    = eval ctx dirs env n
     I  -> I
     I0 -> I0
     I1 -> I1
-    Sys sys -> doSys (evalSystem env sys)
-    Partial phi t -> doPartial (evalFormula env phi) (eval env t)
-    Restr phi u t -> Restr (evalFormula env phi) (eval env u) (eval env t)
+    Sys sys -> doSys (evalSystem ctx dirs env sys)
+    Partial phi t -> doPartial (evalFormula dirs phi) (eval ctx dirs env t)
+    Restr phi u t -> Restr (evalFormula dirs phi) (eval ctx dirs env u) (eval ctx dirs env t)
 
-evalFormula :: Env -> Formula -> Formula
-evalFormula env ff = simplify $ multipleSubst ff env'
-    where getIVal :: (Ident,EnvEntry) -> [(Ident,Interval)]
-          getIVal (s,v) = case v of
-              Val I0         -> [(s,IZero)]
-              Val I1         -> [(s,IOne)]
-              Val (Var s' _) -> [(s,IVar s')]
-              EDef I t       -> [(s,snd $ head $ getIVal (s,Val t))]
-              _              -> []
-          env' = concatMap getIVal env
+toValue :: Interval -> Value
+toValue IZero = I0
+toValue IOne  = I1
+toValue (IVar s) = Var s (Just I)
 
-evalSystem :: Env -> System -> System
-evalSystem env sys = map (\(phi,t) -> (evalFormula env phi, eval env t)) sys
+toInterval :: Value -> Interval
+toInterval I0 = IZero
+toInterval I1 = IOne
+toInterval (Var s _) = IVar s
 
-simplifySystem :: DirEnv -> System -> Value
-simplifySystem dirs sys = doSys $ map (\(phi,v) -> (subst dirs phi,v)) sys
+evalFormula :: DirEnv -> Formula -> Formula
+evalFormula dirs ff = simplify $ subst dirs ff
+
+evalSystem :: Ctx -> DirEnv -> Env -> System -> System
+evalSystem ctx dirs env sys = myTrace ("[evalSystem] sys = " ++ show sys ++ ", dirs = " ++ show dirs) $
+    map (\(phi,t) -> (evalFormula dirs phi, eval ctx dirs env t)) sys
+
+--simplifySystem :: DirEnv -> System -> Value
+--simplifySystem dirs sys = doSys $ map (\(phi,v) -> (subst dirs phi,v)) sys
+
+simplifyValue :: DirEnv -> Value -> Value
+simplifyValue dirs (Var s mty) = case lookupDir s dirs of
+    Nothing -> Var s mty
+    Just i -> toValue i
+simplifyValue dirs (Sys sys) = doSys $ map (\(phi,v) -> (subst dirs phi,v)) sys
+simplifyValue dirs (Restr phi u ty) = Restr (subst dirs phi) u ty
+simplifyValue dirs (App neutral arg) = neutral @@ (simplifyValue dirs arg)
+simplifyValue dirs v = v
 
 -- Evaluates a closure
 doApply :: Value -> Value -> Value
-doApply (Closure s tVal e env) arg = eval (extend env s (Val arg)) e
-doApply neutral arg = case neutral of
-    Var s (Just (Closure s' I ty rho)) -> case doApply (Closure s' I ty rho) arg of
-        Restr FTrue u _ -> u
-        otherwise       -> App neutral arg
+doApply (Closure s tVal e (ctx,dirs,env)) arg = case tVal of
+    I -> eval (extend ctx s (Decl I)) (addConj [(s,toInterval arg)] dirs) env e
+    _ -> eval ctx dirs (extend env s (Val arg)) e  --I don't need to add `t` to `ctx`
+doApply neutral arg = neutral @@ arg --App neutral arg
+
+isIAbst :: Value -> Bool
+isIAbst v = case v of
+    Var s (Just (Closure s' I ty (ctx,dirs,rho))) -> True
+    _                                        -> False
+
+(@@) :: Value -> Value -> Value
+neutral @@ arg = myTrace ("[@@] " ++ show neutral ++ " @@ " ++ show arg) $ case neutral of
+    Var s (Just (Closure s' I ty (ctx,dirs,rho))) -> let x = doApply (Closure s' I ty (ctx,dirs,rho)) arg in case x of
+        Restr FTrue u _ -> myTrace ("[@@] Restr FTrue u _, x = " ++ show x ++ "  ==> evals to " ++ show u) $ u
+        otherwise       -> myTrace ("[@@] otherwise, x = " ++ show x) $ App neutral arg
     otherwise -> App neutral arg
+
+--TODO is this needed? YES (needs simplification)
+{-doIApp :: DirEnv -> Value -> Value -> Value
+doIApp dirs neutral arg = case neutral of
+    Var s (Just (Closure s' I ty (ctx,rho))) -> let x = simplifyValue dirs $ doApply (Closure s' I ty (ctx,rho)) arg in case x of
+        Restr FTrue u _ -> myTrace ("Restr FTrue u _, x = " ++ show x) $ u
+        otherwise       -> myTrace ("otherwise, x = " ++ show x) $ App neutral arg
+    otherwise -> App neutral arg-}
 
 -- Evaluates nat-induction
 doInd :: Value -> Value -> Value -> Value -> Value
@@ -85,31 +122,32 @@ readBack used (Sys sys) = Sys (mapElems (readBack used) sys)
 readBack used (Partial phi ty) = Partial phi (readBack used ty)
 readBack used (Restr phi u ty) = Restr phi (readBack used u) (readBack used ty)
 readBack used (Ind ty b e n) = Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n)
-readBack used fun@(Closure s tVal e env) = let
-        s'   = newVar used s
-        t'   = readBack (s' : used) tVal
-        eVal = doApply fun (Var s' Nothing)
-        e'   = readBack (s' : used) eVal
+readBack used fun@(Closure s tVal e (ctx,dirs,env)) = let
+        used' = used ++ keys ctx
+        s'   = newVar used' s
+        t'   = readBack (s' : used') tVal
+        eVal = doApply fun (Var s' (Just tVal))
+        e'   = readBack (s' : used') eVal
         in Abst s' t' e'
 readBack used v = v
 
 
-normalize :: Env -> Term -> Term
-normalize env e = readBack (keys env) (eval env e)
+normalize :: Ctx -> Term -> Term
+normalize ctx e = readBack (keys ctx) (eval ctx emptyDirEnv (ctxToEnv ctx) e)
 
 
 {- Linear head reduction -}
 
 headRedV :: Ctx -> Term -> Value
 headRedV ctx (Var s _) = getLeastEval ctx s
-headRedV ctx (App k n) = doApply (headRedV ctx k) (eval emptyEnv n)
-headRedV ctx (Ind ty b s k) = doInd (eval emptyEnv ty) (eval emptyEnv b) (eval emptyEnv s) (headRedV ctx k)
-headRedV ctx t = eval emptyEnv t
+headRedV ctx (App k n) = doApply (headRedV ctx k) (eval ctx emptyDirEnv emptyEnv n)
+headRedV ctx (Ind ty b s k) = doInd (eval ctx emptyDirEnv emptyEnv ty) (eval ctx emptyDirEnv emptyEnv b) (eval ctx emptyDirEnv emptyEnv s) (headRedV ctx k)
+headRedV ctx t = eval ctx emptyDirEnv emptyEnv t
 
 --Gets the least evaluated form of 'x' from context
 getLeastEval :: Ctx -> Ident -> Value
 getLeastEval ctx s = case lookup s ctx of
-    Just (Def _ e) -> eval emptyEnv e
+    Just (Def _ e) -> eval ctx emptyDirEnv emptyEnv e
     otherwise      -> Var s Nothing
 
 --Do head reduction step
@@ -128,7 +166,7 @@ instance Show Term where
 
 printTerm' :: Int -> Term -> String
 printTerm' i t = case t of
-    Var s _      -> show s
+    Var s mty    -> show s -- ++ case mty of Nothing -> ":?" ; Just ty -> ":" ++ show ty
     Universe     -> "U"
     Abst s t e   -> par1 ++ abstS ++ par2
         where abstS = if not (containsVar s e)
@@ -155,7 +193,7 @@ printTerm' i t = case t of
     Sys sys      -> showSystem sys
     Partial phi t  -> "[" ++ show phi ++ "]" ++ printTerm' 0 t
     Restr phi u t  -> "[" ++ show phi ++ " -> " ++ printTerm' 0 u ++ "]" ++ printTerm' 0 t
-    --Closure{}    -> "closure"
+    Closure s tyV e (ctx,dirs,rho)    -> "{" ++ show s ++ "," ++ show e ++ ")}"
     where (par1,par2) = if i == 0 then ("","") else ("(",")")
 
 
@@ -163,12 +201,11 @@ showCtx :: Ctx -> String
 showCtx ctx = "[" ++ intercalate ", " (map showEntry (reverse ctx)) ++ "]"
 
 showOnlyShort :: String -> String
-showOnlyShort s = if length s > 150 then "..." else s
+showOnlyShort s = if length s > 1500 then "..." else s
 
 showEntry :: (Ident,CtxEntry) -> String
 showEntry (s,Decl ty) = show s ++ " : " ++ showOnlyShort (show ty)
 showEntry (s,Def ty val) = show s ++ " : " ++ showOnlyShort (show ty) ++ " = " ++ showOnlyShort (show val)
-showEntry (s,Form ff) = show s ++ " = " ++ showOnlyShort (show ff)
 
 showEnv :: Env -> String
 showEnv env = "[" ++ intercalate ", " (map showEnvEntry (reverse env)) ++ "]"
@@ -176,7 +213,6 @@ showEnv env = "[" ++ intercalate ", " (map showEnvEntry (reverse env)) ++ "]"
 showEnvEntry :: (Ident,EnvEntry) -> String
 showEnvEntry (s,Val val) = show s ++ " -> " ++ show val
 showEnvEntry (s,EDef ty val) = show s ++ " : " ++ showOnlyShort (show ty) ++ " = " ++ showOnlyShort (show val)
-showEnvEntry (s,IVal i) = show s ++ " -> " ++ show i
 
 
 showSystem :: System -> String

@@ -22,7 +22,7 @@ type Err = Either String
 type ReplState = (Ctx,Term,[Ident]) -- Current context, last term checked, locked names
 
 initReplState :: ReplState
-initReplState = ([(Ident "i0",Def I I0),(Ident "i1",Def I I1)],Zero,[])
+initReplState = ([(Ident "i0",Def I I0),(Ident "i1",Def I I1),(Ident "j0",Def I I0),(Ident "j1",Def I I1)],Zero,[])
 
 runFile :: FilePath -> StateT ReplState IO Bool
 runFile f = do
@@ -117,8 +117,11 @@ checkSingleToplevel' (Example t) = do
            return False
         Right tyVal -> do
             liftIO . putStrLn $ "\n'" ++ show t ++ "' has (inferred) type '" ++ show tyVal ++ "'"
-            let norm = normalize (ctxToEnv ctx) t --since 't' typechecks, 't' must have a normal form
-            liftIO . putStrLn $ "'" ++ show t ++ "' reduces to " ++ show norm
+            let norm = normalize ctx t --since 't' typechecks, 't' must have a normal form
+            liftIO . putStrLn $ "'" ++ show t ++ "' reduces to '" ++ show norm ++ "'"
+            --let val = eval (ctx,ctxToEnv ctx) t --TODO
+            --liftIO . putStrLn $ "'" ++ show t ++ "' evaluates to " ++ show val
+            
             put (ctx,t,lockedNames)
             return True
 checkSingleToplevel' (Declaration s t) = do
@@ -211,7 +214,7 @@ doRepl = do
 addDef :: Ctx -> (Ident,Term,Term) -> Either ErrorString Ctx
 addDef ctx (s,t,e) = do
     checkType ctx emptyDirEnv t Universe -- Is 't' really a type?
-    let tVal = eval (ctxToEnv ctx) t
+    let tVal = eval ctx emptyDirEnv (ctxToEnv ctx) t
     checkType ctx emptyDirEnv e tVal -- Has 'e' type 't'?
     Right $ extend ctx s (Def t e)
 
