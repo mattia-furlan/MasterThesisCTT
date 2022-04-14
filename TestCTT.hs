@@ -148,7 +148,6 @@ checkSingleToplevel' (Definition s t e) = do
             return False
         Right ctx' -> do
             liftIO . putStrLn $ "Type check OK!"
-            liftIO . putStrLn $ replicate 50 '\n'
             put (ctx',ans,lockedNames)
             return True
 
