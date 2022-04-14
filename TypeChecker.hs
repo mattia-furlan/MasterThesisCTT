@@ -16,7 +16,7 @@ import Eval
 
 inferType :: Ctx -> DirEnv -> Term -> Either ErrorString Value
 inferType ctx dirs t = myTrace ("[inferType]>> t = " ++ show t ++ ", ctx = " ++ {-showCtx (ctx)-} "..." ++ ", dirs = " ++ show dirs) $ case t of
-    Var s _ -> Right $ eval ctx dirs (lookupType ctx s)
+    Var s _ -> Right $ lookupType s ctx dirs
         where forceRight eith = case eith of Right r -> r
     Universe -> Right Universe
     App fun arg -> do
@@ -75,17 +75,29 @@ checkType ctx dirs e v = myTrace ("[checkType]>> e = " ++ show e ++ ", v = " ++ 
         
         if tVal == I then do
             let e1Val = eval (extend ctx1 s1 (Decl I) {- ++ ctx ?? -}) dirs1 e1
-            when (conv [] e1Val I) $
+            --when (conv [] e1Val I) $
+            when (e1Val == I) $
                 Left $ "I cannot appear as codomain in products"
             checkType (extend ctx s (Decl I)) (addDiag dirs s s1) e e1Val
         else do
             --Instead of 's' I should choose a new name ('s' could be already in the context)
-            let var   = newVar (keys ctx ++ [s,s1]) s
-                ctx1' = extend (extend ctx1 var (Decl t)) s1 (Val (Var var (Just t1Val)))
+            let var   = newVar (keys ctx ++ keys ctx1) s
+                ctx1' = if s1 == Ident "" then
+                        ctx1
+                    else if s1 == var then
+                        extend ctx1 s1 (VDecl t1Val)
+                    else
+                        --extend (extend ctx1 var (Decl t)) s1 (Val (Var var (Just t1Val)))
+                        extend ctx1 s1 (Val (Var var (Just t1Val)))
                 e1Val = eval ctx1' (dirs1 +++ dirs) e1
-            when (conv [] e1Val I) $
+            --when (conv [] e1Val I) $
+            when (e1Val == I) $
                 Left $ "I cannot appear as codomain in products"
-            checkType (extend (extend ctx var (Decl t)) s (Def t (Var var (Just tVal)))) dirs e e1Val
+            let ctx' = if s == var then
+                    extend ctx s (VDecl tVal)
+                else
+                    extend ctx s (Def t (Var var (Just tVal)))
+            checkType ctx' dirs e e1Val
     (Sys sys,{-Partial phi ty-}v) -> myTrace (">> sys = " ++ show sys ++ ", v = " ++ show v) $ do
         let (phi,ty) = case v of
                 Partial phi ty -> (phi,ty)

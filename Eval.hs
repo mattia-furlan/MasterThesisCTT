@@ -9,20 +9,33 @@ import CoreCTT
 import Debug.Trace
 
 myTrace :: String -> a -> a
---myTrace s = id
-myTrace s x = trace s x
+myTrace s = id
+--myTrace s x = trace s x
+
+lookupType :: Ident -> Ctx -> DirEnv -> Value
+lookupType s ctx dirs = do
+    let mentry = lookup s ctx
+    case mentry of
+        Nothing -> error $ "[lookupType] got unknown identifier " ++ show s
+        Just entry -> case entry of
+            Decl ty     -> eval ctx dirs ty
+            Def  ty def -> eval ctx dirs ty
+            VDecl tyV   -> tyV
 
 eval :: Ctx -> DirEnv -> Term -> Value
-eval ctx dirs t =  case t of
+eval ctx dirs t = case t of
     Var s mty -> case lookupDir s dirs of
-        Nothing -> case lookup s ctx of
-            Nothing          -> case mty of
-                Nothing -> Var s (Just $ eval ctx dirs $ lookupType ctx s)
-                Just ty -> Var s (Just ty)
-            Just (Val v)    -> v
-            Just (Decl ty)  -> Var s (Just $ eval ctx dirs ty)
-            Just (Def ty e) -> eval ctx dirs e
         Just i -> toValue i
+        Nothing ->
+            case lookup s ctx of
+                {-Nothing -> case mty of
+                    Nothing -> Var s (Just $ eval ctx dirs $ lookupType s ctx)
+                    Just ty -> Var s (Just ty)-}
+                Nothing -> Var s mty
+                Just (Val v)    -> v
+                Just (Decl ty)  -> Var s (Just $ eval ctx dirs ty)
+                Just (VDecl tyV)  -> Var s (Just tyV)
+                Just (Def ty e) -> eval ctx dirs e
     Universe -> Universe
     Abst s t e -> Closure s (eval ctx dirs t) e (ctx,dirs)
     App e1 e2 -> doApply (eval ctx dirs e1) (eval ctx dirs e2)
@@ -183,6 +196,7 @@ printTerm' i t = case t of
     Sys sys      -> showSystem sys
     Partial phi t  -> "[" ++ show phi ++ "]" ++ printTerm' 0 t
     Restr phi u t  -> "[" ++ show phi ++ " -> " ++ printTerm' 0 u ++ "]" ++ printTerm' 0 t
+    --Closure s tyV e (ctx,dirs)    -> "{" ++ show s ++ "," ++ show e ++ ",ctx=" ++ showCtx ctx ++ ",dirs=" ++ show dirs ++ ")}"
     Closure s tyV e (ctx,dirs)    -> "{" ++ show s ++ "," ++ show e ++ ")}"
     where (par1,par2) = if i == 0 then ("","") else ("(",")")
 
@@ -191,11 +205,13 @@ showCtx :: Ctx -> String
 showCtx ctx = "[" ++ intercalate ", " (map showEntry (reverse ctx)) ++ "]"
 
 showOnlyShort :: String -> String
-showOnlyShort s = if length s > 1500 then "..." else s
+showOnlyShort s = if length s > 20 then "..." else s
 
 showEntry :: (Ident,CtxEntry) -> String
 showEntry (s,Decl ty) = show s ++ " : " ++ showOnlyShort (show ty)
 showEntry (s,Def ty val) = show s ++ " : " ++ showOnlyShort (show ty) ++ " = " ++ showOnlyShort (show val)
+showEntry (s,VDecl tyV) = show s ++ " :v " ++ show tyV
+showEntry (s,Val val) = show s ++ " => " ++ show val
 
 showSystem :: System -> String
 showSystem sys = "[" ++ intercalate ", " (map (\(ff,t) -> "[" ++ show ff ++ "] " ++ show t) sys) ++ "]"

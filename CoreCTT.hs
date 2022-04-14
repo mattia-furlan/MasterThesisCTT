@@ -185,6 +185,7 @@ type Ctx = [(Ident,CtxEntry)]
 
 data CtxEntry = Decl Term      -- Type
               | Def Term Term  -- Type and definition
+              | VDecl Value    -- Evaluated type
               | Val Value      -- For `eval`
     deriving (Eq, Ord)
 
@@ -195,20 +196,13 @@ instance SyntacticObject CtxEntry where
     vars entry = case entry of
         Decl t     -> vars t
         Def ty def -> vars ty ++ vars def
+        VDecl _     -> [] --TODO
         Val _      -> [] --TODO
     freeVars entry = case entry of
         Decl t     -> freeVars t
         Def ty def -> freeVars ty ++ freeVars def
+        VDecl _     -> [] --TODO
         Val _      -> [] --TODO
-
-lookupType :: Ctx -> Ident -> Term
-lookupType ctx s = do
-    let mentry = lookup s ctx
-    case mentry of
-        Nothing -> error $ "[lookupType] got unknown identifier " ++ show s
-        Just entry -> case entry of
-            Decl ty     -> ty
-            Def  ty def -> ty
 
 {-ctxToEnv :: Ctx -> Env
 ctxToEnv ctx = concatMap getEnvEntry (zip (keys ctx) (elems ctx))
