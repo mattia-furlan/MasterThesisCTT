@@ -22,7 +22,7 @@ type Err = Either String
 type ReplState = (Ctx,Term,[Ident]) -- Current context, last term checked, locked names
 
 initReplState :: ReplState
-initReplState = ([(Ident "i0",Def I I0),(Ident "i1",Def I I1),(Ident "j0",Def I I0),(Ident "j1",Def I I1)],Zero,[])
+initReplState = ([(Ident "I0",Def I I0),(Ident "I1",Def I I1)],Zero,[])
 
 runFile :: FilePath -> StateT ReplState IO Bool
 runFile f = do
@@ -148,6 +148,7 @@ checkSingleToplevel' (Definition s t e) = do
             return False
         Right ctx' -> do
             liftIO . putStrLn $ "Type check OK!"
+            liftIO . putStrLn $ replicate 50 '\n'
             put (ctx',ans,lockedNames)
             return True
 
@@ -215,7 +216,7 @@ doRepl = do
 addDef :: Ctx -> (Ident,Term,Term) -> Either ErrorString Ctx
 addDef ctx (s,t,e) = do
     checkType ctx emptyDirEnv t Universe -- Is 't' really a type?
-    let tVal = eval ctx emptyDirEnv (ctxToEnv ctx) t
+    let tVal = eval ctx emptyDirEnv t
     checkType ctx emptyDirEnv e tVal -- Has 'e' type 't'?
     Right $ extend ctx s (Def t e)
 

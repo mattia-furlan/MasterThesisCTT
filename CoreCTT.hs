@@ -21,13 +21,13 @@ data Term
     | Ind Term Term Term Term
     {- Cubical -}
     | I
-    | I0 | I1 --TODO
+    | I0 | I1
     | Sys System
     | Partial Formula Term
     | Restr Formula Term Term
     | Comp Formula Term Term Term
     {- Closure (values only) -}
-    | Closure Ident Value Term (Ctx,DirEnv,Env) 
+    | Closure Ident Value Term (Ctx,DirEnv) 
   deriving (Eq, Ord)
 
 type Value = Term
@@ -170,14 +170,14 @@ al `at` s = fromJust (lookup s al)
 
 {- Evaluation enviroments -}
 
-type Env = [(Ident,EnvEntry)]
+{-type Env = [(Ident,EnvEntry)]
 
 data EnvEntry = Val Value
-              | EDef Term Term
+              | EDef Term Term  --TODO not needed anymore since `eval` gets the Ctx
     deriving (Eq, Ord)
 
 emptyEnv :: Env
-emptyEnv = []
+emptyEnv = []-}
 
 {- Contexts -}
 
@@ -185,6 +185,7 @@ type Ctx = [(Ident,CtxEntry)]
 
 data CtxEntry = Decl Term      -- Type
               | Def Term Term  -- Type and definition
+              | Val Value      -- For `eval`
     deriving (Eq, Ord)
 
 emptyCtx :: Ctx
@@ -194,25 +195,27 @@ instance SyntacticObject CtxEntry where
     vars entry = case entry of
         Decl t     -> vars t
         Def ty def -> vars ty ++ vars def
+        Val _      -> [] --TODO
     freeVars entry = case entry of
         Decl t     -> freeVars t
         Def ty def -> freeVars ty ++ freeVars def
+        Val _      -> [] --TODO
 
-lookupType :: Ctx -> Ident -> {-Either ErrorString-} Term
+lookupType :: Ctx -> Ident -> Term
 lookupType ctx s = do
     let mentry = lookup s ctx
     case mentry of
-        Nothing -> error $ "[lookupType] got unknown identifier " ++ show s --Left $ "identifier '" ++ show s ++ "' not found in context"
+        Nothing -> error $ "[lookupType] got unknown identifier " ++ show s
         Just entry -> case entry of
             Decl ty     -> ty
             Def  ty def -> ty
 
-ctxToEnv :: Ctx -> Env
+{-ctxToEnv :: Ctx -> Env
 ctxToEnv ctx = concatMap getEnvEntry (zip (keys ctx) (elems ctx))
     where
         getEnvEntry :: (Ident,CtxEntry) -> [(Ident,EnvEntry)]
         getEnvEntry (s,(Decl ty)) = []
-        getEnvEntry (s,(Def ty val)) = [(s,(EDef ty val))]
+        getEnvEntry (s,(Def ty val)) = [(s,(EDef ty val))]-}
 
 getLockedCtx :: [Ident] -> Ctx -> Ctx
 getLockedCtx idents ctx = foldr getLockedCtx' ctx idents
@@ -232,28 +235,10 @@ removeFromCtx ctx s = if s `elem` (keys ctx) then
         in foldl removeFromCtx ctx' fall
     else
         ctx
-{-
-toEnv :: DirEnv -> Env
-toEnv (zeros,ones,diags) = substs0 ++ substs1 ++ substsd
-    where substs0 = map (\s -> (s,Val I0)) zeros
-          substs1 = map (\s -> (s,Val I1)) ones
-          substsd = concatMap (\part -> map (\s -> (s,Val $ Var (head part) (Just I))) part) diags
--}
 
-toCtx :: DirEnv -> Ctx
-toCtx (zeros,ones,diags) = substs0 ++ substs1 ++ substsd
-    where substs0 = map (\s -> (s,Def I I0)) zeros
-          substs1 = map (\s -> (s,Def I I1)) ones
-          substsd = concatMap (\part -> map (\s -> (s,Def I $ Var (head part) (Just I))) part) diags
-
-
-substDirs :: Formula -> DirEnv -> Formula
-substDirs ff dirs = multipleSubst ff (toSubsts dirs)
 
 {- Cubical -}
 
 type System = [(Formula,Term)]
 
-
---Orton pitts
 

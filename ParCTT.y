@@ -65,6 +65,7 @@ Term : Term1 { $1 }
      | '[' Ident ':' Term ']' Term { CoreCTT.Abst $2 $4 $6 }
      | '[' Formula ']' Term { CoreCTT.Partial $2 $4 }
      | '[' Formula '->' Term ']' Term { CoreCTT.Restr $2 $4 $6 }
+     --| '[' Formula '->' Term ']' Term { CoreCTT.Restr $2 $4 $6 }
 
 Term1 :: { CoreCTT.Term }
 Term1 : Term2 { $1 }

@@ -13,10 +13,14 @@
 
 
 
+
+
+
+
 Path : [A : U] A -> A -> U =
 	[A : U][a0 : A][a1 : A][i : I] [(i = 0) \/ (i = 1) -> [[i = 0] a0, [i = 1] a1]] A ;
 
---refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
+refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
 
 A : U ;
 a : A ;
@@ -28,10 +32,16 @@ q : Path A b c ;
 
 j : I ;
 
-u' : [i : I][j = 0 \/ i = 0 \/ i = 1]A = [i : I][[j = 0] p i, [i = 0] a, [i = 1] q j] ; 
+--u' : [i : I][j = 0 \/ i = 0 \/ i = 1]A = [i : I][[j = 0] p i, [i = 0] a, [i = 1] q j] ; 
 u : [j : I][i : I][j = 0 \/ i = 0 \/ i = 1]A = [j : I][i : I][[j = 0] p i, [i = 0] a, [i = 1] q j] ; 
 
 u0 : [i : I][i = 0]A = [i : I][[i = 0] a] ;
+
+P : A -> U ;
+a' : P a ;
+test : P ( p I0 ) = a' ;
+
+
 
 {-
 

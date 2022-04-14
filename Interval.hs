@@ -138,7 +138,6 @@ fromDNF (dnf) = foldOr $ map (foldAnd . (map coupleToAtom) . toList) (toList dnf
 simplifyDNF :: DNFFormula -> DNFFormula
 simplifyDNF (dnf) = if Set.empty `Set.member` dnf then
         trueDNF
-    --simplification of `i=0 /\ i=1` gets done in `fromDirEnv`
     else foldOrDNF $ concatMap (toConj . toDirEnv . toList) (toList dnf')
     where
         dnf' = Set.filter (not . Set.null) dnf
@@ -209,7 +208,7 @@ imp ff1 ff2 = all (\conj1 -> any (\conj2 -> conj2 `Set.isSubsetOf` conj1) dnf2) 
           dnf2 = toList . simplifyDNF $ toDNF ff2  --requires simplification!
 
 equalFormulas :: Formula -> Formula -> Bool
-equalFormulas ff1 ff2 = (simplify ff1) == (simplify ff2)
+equalFormulas ff1 ff2 = (simplifyDNF . toDNF) ff1 == (simplifyDNF . toDNF) ff2
 
 checkCongruence :: Formula -> Formula -> Formula -> Bool
 checkCongruence ff ff1 ff2 = checkCongruenceDNF (toDNF ff) ff1 ff2
@@ -226,7 +225,7 @@ checkCongruenceDNF dnf ff1 ff2 = all (\conj -> checkCongruenceConj (toList conj)
 
 type DirEnv = ([Ident],[Ident],[[Ident]]) --zeros, ones, diags
 
-emptyDirEnv :: DirEnv
+emptyDirEnv :: DirEnv  
 emptyDirEnv = ([],[],[])
 
 lookupDir :: Ident -> DirEnv -> Maybe Interval
@@ -309,10 +308,6 @@ fromDirEnv = toSubsts
 
 (+++) :: DirEnv -> DirEnv -> DirEnv
 dirs1 +++ dirs2 = toDirEnv $ fromDirEnv dirs1 ++ fromDirEnv dirs2
-{-dirs1@(zeros1,ones1,diags1) +++ dirs2@(zeros2,ones2,diags2) = dirs'''
-    where dirs'  = foldl addZero dirs1 zeros2
-          dirs'' = foldl addOne dirs' ones2
-          dirs''' = -}
 
 {- Examples -}
 

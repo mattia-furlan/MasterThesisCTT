@@ -22,6 +22,7 @@ intro : T A -> A = [t : T A][X : U][f : T X -> X] f ([g : Pow X] t ([z : A] g (z
 
 match : A -> T A = [z : A]z (T A) ([t : T (T A)][g : Pow A] t ([x : T A] g (intro x))) ;
 
+
 delta : A -> A = [z : A] intro (match z) ;
 
 Q : T A = [p : Pow A][z : A]match z p -> p z;
@@ -41,7 +42,7 @@ B : Pow A =  [z : A] not (Ed z) ;
 
 lem3 : Q B = [z : A] [k : match z B] [l : Ed z] l B k ([p:Pow A]l (cDelta p));
 
-lem4 : not (Ed a0) = lem1 B lem3 ;
+--lem4 : not (Ed a0) = lem1 B lem3 ;
 
 --loop : abs = lem4 lem2 ;
 
