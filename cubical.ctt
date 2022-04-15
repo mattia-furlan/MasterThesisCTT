@@ -1,15 +1,15 @@
 
---system : [i:I][i = 0 \/ i = 1]N = [i:I][[i=0] 0 , [i=1] S 0] ;
+--system : [i:I][i = 0 \/ i = 1]N = [i:I][(i=0) -> 0 , (i=1) -> S 0] ;
 
---system' : [i:I][i = 0 \/ i = 1]N = [j:I][[j=0] 0 , [j=1] S 0] ;
+system' : [i:I][i = 0 \/ i = 1]N = [j:I][(j=0) -> 0 , (j=1) -> S 0] ;
 
--- systemI : [i:I][i = 0 \/ i = 1]I = [i:I][[i=0] i , [i=1] i] ; --rejected OK `I` cannot be codomain
+-- systemI : [i:I][i = 0 \/ i = 1]I = [i:I][(i=0) -> i , (i=1) -> i] ; --rejected OK `I` cannot be codomain
 
--- system' : [i:I][i = 0 \/ i = 1]N = [i:I][[i=0 \/ i = 1] 0 , [i=1] S 0] ; --rejected OK terms are not adjacent
+-- system' : [i:I][i = 0 \/ i = 1]N = [i:I][i=0 \/ i = 1 -> 0 , i=1 -> S 0] ; --rejected OK terms are not adjacent
 
--- system : [i:I][i = 0]N = [j:I][[j=0] 0 , [j=1] S 0] ; --rejected OK formulas don't match
+-- system : [i:I][i = 0]N = [j:I][j=0 -> 0 , j=1 -> S 0] ; --rejected OK formulas don't match
 
--- system : [i:I]N = [i:I][[i = i] 0] ;
+ system : [i:I]N = [i:I][i = i -> 0] ;
 
 
 
@@ -18,7 +18,7 @@
 
 
 Path : [A : U] A -> A -> U =
-	[A : U][a0 : A][a1 : A][i : I] [(i = 0) \/ (i = 1) -> [[i = 0] a0, [i = 1] a1]] A ;
+	[A : U][a0 : A][a1 : A][i : I] [(i = 0) -> a0, (i = 1) -> a1] A ;
 
 refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
 
@@ -32,21 +32,11 @@ q : Path A b c ;
 
 j : I ;
 
---u' : [i : I][j = 0 \/ i = 0 \/ i = 1]A = [i : I][[j = 0] p i, [i = 0] a, [i = 1] q j] ; 
-u : [j : I][i : I][j = 0 \/ i = 0 \/ i = 1]A = [j : I][i : I][[j = 0] p i, [i = 0] a, [i = 1] q j] ; 
+u : [j : I][i : I][j = 0 \/ i = 0 \/ i = 1]A = [j : I][i : I][(j = 0) -> p i, (i = 0) -> a, (i = 1) -> q j] ; 
 
-u0 : [i : I][i = 0]A = [i : I][[i = 0] a] ;
+u0 : [i : I][i = 0]A = [i : I][(i = 0) -> a] ;
 
 P : A -> U ;
 a' : P a ;
-test : P ( p I0 ) = a' ;
+test : P (p I0) = a' ;
 
-
-
-{-
-
-trans : [A : U][a : A][b : A][c : A] Path A a b -> Path A b c -> Path A a c =
-	[A : U][a : A][b : A][c : A][p : Path A a b][q : Path A b c]
-		[i : I] comp j ([i' : I] A) [(i = 0) a, (i = 1) q j] (p i) ;
-
--}
