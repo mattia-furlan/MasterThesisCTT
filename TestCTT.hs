@@ -64,9 +64,9 @@ checkVars ctx t = case t of
     Succ t        -> checkVars ctx t
     Ind ty b s n  -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
     I             -> True
-    Sys sys       -> all (checkVars ctx) (elems sys)
+    Sys sys       -> all (all (`elem` (keys ctx)) . vars) (keys sys) && all (checkVars ctx) (elems sys)
     Partial phi t -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx t
-    Restr phi u t -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx u && checkVars ctx t
+    Restr sys t   -> checkVars ctx (Sys sys) && checkVars ctx t
     Comp psi x0 fam u -> checkVars ctx x0 && checkVars ctx fam && checkVars ctx u
 
 checkSingleToplevel :: Toplevel -> StateT ReplState IO Bool
