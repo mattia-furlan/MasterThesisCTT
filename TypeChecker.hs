@@ -89,7 +89,7 @@ checkType ctx dirs e v = myTrace ("[checkType]>> e = " ++ show e ++ ", v = " ++ 
                     else
                         --extend (extend ctx1 var (Decl t)) s1 (Val (Var var (Just t1Val)))
                         extend ctx1 s1 (Val (Var var (Just t1Val)))
-                e1Val = eval ctx1' (dirs1 +++ dirs) e1
+                e1Val = eval ctx1' dirs1 e1
             --when (conv [] e1Val I) $
             when (e1Val == I) $
                 Left $ "I cannot appear as codomain in products"
@@ -112,25 +112,29 @@ checkType ctx dirs e v = myTrace ("[checkType]>> e = " ++ show e ++ ", v = " ++ 
         unless eq_check $
             Left $ "values are not adjacent"
     (Partial phi ty,Universe) -> do
-        when (conv [] ty I) $
+        --when (conv [] ty I) $
+        when (ty == I) $
             Left $ "I is not a type"
         checkTypePartial phi ctx dirs ty Universe
-    (Restr phi u ty,Universe) -> do
-        when (conv [] ty I) $
+    (Restr sys ty,Universe) -> do
+        --when (conv [] ty I) $
+        when (ty == I) $
             Left $ "I is not a type"
         checkType ctx dirs ty Universe
         let tyVal = eval ctx dirs ty
-        checkTypePartial phi ctx dirs u tyVal
-    (e,Restr phi u ty) -> do
+            phi = (getSystemFormula sys)
+        checkTypePartial phi ctx dirs (Sys sys) tyVal
+    (e,Restr sys ty) -> do
         let eVal = eval ctx dirs e
+            phi = (getSystemFormula sys)
         checkType ctx dirs e ty
-        unless (convPartial phi eVal u) $
-            Left $ "term '" ++ show e ++ "' does not agree with '" ++ show u ++ "' on " ++ show phi
+        unless (convPartial phi eVal (Sys sys)) $
+            Left $ "term '" ++ show e ++ "' does not agree with '" ++ show sys ++ "' on " ++ show phi
     otherwise -> do
         ty <- inferType ctx dirs e
         let ty' = case ty of
-                Restr _ _ v' -> v'
-                otherwise    -> ty
+                Restr _ v' -> v'
+                otherwise  -> ty
         unless (conv [] v ty') $
             Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
                    ++ "' of type '" ++ show ty ++ "' instead"
