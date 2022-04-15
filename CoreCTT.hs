@@ -1,3 +1,6 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module CoreCTT where
 
 import Data.List (intercalate,delete,deleteBy)
@@ -24,7 +27,7 @@ data Term
     | I0 | I1
     | Sys System
     | Partial Formula Term
-    | Restr Formula Term Term
+    | Restr System Term
     | Comp Formula Term Term Term
     {- Closure (values only) -}
     | Closure Ident Value Term (Ctx,DirEnv) 
@@ -76,6 +79,10 @@ instance SyntacticObject Ident where
     vars s = [s]
     freeVars s = [s]
 
+instance SyntacticObject System where
+    vars sys = concatMap vars (keys sys) ++ concatMap vars (elems sys)
+    freeVars = vars
+
 instance SyntacticObject Term where
     vars t = case t of
         Var s _       -> [s]
@@ -89,9 +96,9 @@ instance SyntacticObject Term where
         I             -> []
         I0            -> []
         I1            -> []
-        Sys sys       -> concatMap vars (keys sys) ++ concatMap vars (elems sys)
+        Sys sys       -> vars sys
         Partial phi t -> vars phi ++ vars t
-        Restr phi u t -> vars phi ++ vars u ++ vars t
+        Restr sys t   -> vars sys ++ vars t
         Comp psi x0 fam u -> vars psi ++ vars x0 ++ vars fam ++ vars u
     freeVars t = case t of
         Var s _       -> [s]
@@ -105,9 +112,9 @@ instance SyntacticObject Term where
         I             -> []
         I0            -> []
         I1            -> []
-        Sys sys       -> concatMap freeVars (keys sys) ++ concatMap freeVars (elems sys)
+        Sys sys       -> freeVars sys
         Partial phi t -> freeVars phi ++ freeVars t
-        Restr phi u t -> freeVars phi ++ freeVars u ++ freeVars t
+        Restr sys t   -> freeVars sys ++ freeVars t
         Comp psi x0 fam u -> freeVars psi ++ freeVars x0 ++ freeVars fam ++ freeVars u
 
 instance SyntacticObject Formula where
@@ -126,7 +133,7 @@ checkTermShadowing vars t = case t of
     Var s _             -> True
     Universe            -> True
     Abst (Ident "") t e -> checkTermShadowing vars t && checkTermShadowing vars e
-    Abst s t e          -> not (s `elem` vars) &&
+    Abst s t e          -> s `notElem` vars &&
         checkTermShadowing (s : vars) t && checkTermShadowing (s : vars) e 
     App fun arg         -> checkTermShadowing vars fun && checkTermShadowing vars arg
     Nat                 -> True
@@ -139,7 +146,7 @@ checkTermShadowing vars t = case t of
     I1                  -> True
     Sys sys             -> all (checkTermShadowing vars) (elems sys)
     Partial phi t       -> checkTermShadowing vars t
-    Restr phi u t       -> checkTermShadowing vars u && checkTermShadowing vars t
+    Restr sys t         -> all (checkTermShadowing vars) (elems sys) && checkTermShadowing vars t
     Comp psi x0 fam u   -> checkTermShadowing vars x0 && checkTermShadowing vars fam && checkTermShadowing vars u
 
 
@@ -157,13 +164,13 @@ extend :: [(k,a)] -> k -> a -> [(k,a)]
 extend al s v = (s,v) : al
 
 keys :: [(k,a)] -> [k]
-keys al = map fst al
+keys = map fst
 
 elems :: [(k,a)] -> [a]
-elems al = map snd al
+elems = map snd
 
 mapElems :: (a -> b) -> [(k,a)] -> [(k,b)]
-mapElems f al = map (\(s,v) -> (s,f v)) al
+mapElems f = map (\(s,v) -> (s,f v))
 
 at :: (Eq k) => [(k,a)] -> k -> a
 al `at` s = fromJust (lookup s al)
@@ -235,4 +242,5 @@ removeFromCtx ctx s = if s `elem` (keys ctx) then
 
 type System = [(Formula,Term)]
 
-
+getSystemFormula :: System -> Formula
+getSystemFormula = foldOr . keys
