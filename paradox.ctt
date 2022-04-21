@@ -42,7 +42,7 @@ B : Pow A =  [z : A] not (Ed z) ;
 
 lem3 : Q B = [z : A] [k : match z B] [l : Ed z] l B k ([p:Pow A]l (cDelta p));
 
---lem4 : not (Ed a0) = lem1 B lem3 ;
+lem4 : not (Ed a0) = lem1 B lem3 ;
 
 --loop : abs = lem4 lem2 ;
 

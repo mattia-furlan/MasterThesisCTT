@@ -1,7 +1,7 @@
 
 --system : [i:I][i = 0 \/ i = 1]N = [i:I][(i=0) -> 0 , (i=1) -> S 0] ;
 
-system' : [i:I][i = 0 \/ i = 1]N = [j:I][(j=0) -> 0 , (j=1) -> S 0] ;
+-- system' : [i:I][i = 0 \/ i = 1]N = [j:I][(j=0) -> 0 , (j=1) -> S 0] ;
 
 -- systemI : [i:I][i = 0 \/ i = 1]I = [i:I][(i=0) -> i , (i=1) -> i] ; --rejected OK `I` cannot be codomain
 
@@ -9,9 +9,7 @@ system' : [i:I][i = 0 \/ i = 1]N = [j:I][(j=0) -> 0 , (j=1) -> S 0] ;
 
 -- system : [i:I][i = 0]N = [j:I][j=0 -> 0 , j=1 -> S 0] ; --rejected OK formulas don't match
 
- system : [i:I]N = [i:I][i = i -> 0] ;
-
-
+-- system : [i:I]N = [i:I][i = i -> 0] ;
 
 
 
@@ -30,7 +28,7 @@ p : Path A a b ;
 q : Path A b c ;
 
 
-j : I ;
+--j : I ;
 
 u : [j : I][i : I][j = 0 \/ i = 0 \/ i = 1]A = [j : I][i : I][(j = 0) -> p i, (i = 0) -> a, (i = 1) -> q j] ; 
 
@@ -40,3 +38,10 @@ P : A -> U ;
 a' : P a ;
 test : P (p I0) = a' ;
 
+--i : I ;
+--k : I ;
+
+
+s1 : [i:I][j:I][i = 0 /\ j = 0 \/ i = 1 /\ j = 1]N = [i:I][j:I][i = 0 /\ j = 0 -> 0, i = 1 /\ j = 1 -> S 0] ;
+
+--s2 : [i:I][j:I][k:I][i = 0 /\ j = 0 \/ i = 1 /\ k = 0]N = [i:I][j:I][k:I][i = 0 /\ j = 0 -> 0, i = 1 /\ k = 0 -> S 0] ;
