@@ -26,7 +26,7 @@ initReplState = ([(Ident "I0",Def I I0),(Ident "I1",Def I I1)],Zero,[])
 
 runFile :: FilePath -> StateT ReplState IO Bool
 runFile f = do
-    liftIO . putStrLn $ "Reading file " ++ f
+    printLnIO $ "Reading file " ++ f
     contents <- liftIO . readFile $ f
     res <- run contents
     liftIO $ when res $ putStrLn $ "\nFile " ++ f ++ " loaded successfully"
@@ -55,24 +55,26 @@ checkProgram (Program (toplevel : decls)) = do
 --Checks if a term contains undeclared variables (True = OK)
 checkVars :: Ctx -> Term -> Bool
 checkVars ctx t = case t of
-    Var s _       -> isJust $ lookup s ctx
-    Universe      -> True
-    Abst s t e    -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
-    App fun arg   -> checkVars ctx fun && checkVars ctx arg
-    Nat           -> True
-    Zero          -> True
-    Succ t        -> checkVars ctx t
-    Ind ty b s n  -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
-    I             -> True
-    Sys sys       -> all (all (`elem` (keys ctx)) . vars) (keys sys) && all (checkVars ctx) (elems sys)
-    Partial phi t -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx t
-    Restr sys t   -> checkVars ctx (Sys sys) && checkVars ctx t
+    Var s _           -> isJust $ lookup s ctx
+    Universe          -> True
+    Abst s t e        -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
+    App fun arg _     -> checkVars ctx fun && checkVars ctx arg
+    Nat               -> True
+    Zero              -> True
+    Succ t            -> checkVars ctx t
+    Ind ty b s n _    -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
+    I                 -> True
+    I0                -> True
+    I1                -> True
+    Sys sys           -> all (\phi -> all (`elem` keys ctx) (vars phi)) (keys sys) && all (checkVars ctx) (elems sys)
+    Partial phi t     -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx t
+    Restr sys t       -> checkVars ctx (Sys sys) && checkVars ctx t
     Comp psi x0 fam u -> checkVars ctx x0 && checkVars ctx fam && checkVars ctx u
 
 checkSingleToplevel :: Toplevel -> StateT ReplState IO Bool
 checkSingleToplevel (Example t) = do
     (ctx,_,_) <- get
-    if not (checkTermShadowing [] t) then do
+    if not (checkTermShadowing (keys ctx) t) then do
         liftIO . showErr $ "term '" ++ show t ++ "' contains shadowed variables"
         return False
     else if not (checkVars ctx t) then do
@@ -82,7 +84,7 @@ checkSingleToplevel (Example t) = do
         checkSingleToplevel' (Example t)
 checkSingleToplevel decl@(Declaration s t) = do
     (ctx,_,_) <- get
-    if not (checkTermShadowing [] t) then do
+    if not (checkTermShadowing (keys ctx) t) then do
         liftIO . showErr $ "term '" ++ show t ++ "' contains shadowed variables"
         return False
     else if not (checkVars ctx t) then do
@@ -95,7 +97,7 @@ checkSingleToplevel decl@(Declaration s t) = do
             return False
 checkSingleToplevel def@(Definition s t e) = do
     (ctx,_,_) <- get
-    if not (checkTermShadowing [s] t && checkTermShadowing [s] e) then do --avoid "x : N->N = [x:N]x" 
+    if not (checkTermShadowing (s : keys ctx) t && checkTermShadowing (s : keys ctx) e) then do --avoid "x : N->N = [x:N]x" 
         liftIO . showErr $ "definition of '" ++ show s ++ "' contains shadowed variables"
         return False
     else if not (checkVars ctx t && checkVars ctx e) then do
@@ -117,38 +119,36 @@ checkSingleToplevel' (Example t) = do
            liftIO $ showErr err
            return False
         Right tyVal -> do
-            liftIO . putStrLn $ "\n'" ++ show t ++ "' has (inferred) type '" ++ show tyVal ++ "'"
+            printLnIO $ "\n'" ++ show t ++ "' has (inferred) type '" ++ show tyVal ++ "'"
             let norm = normalize ctx t --since 't' typechecks, 't' must have a normal form
-            liftIO . putStrLn $ "'" ++ show t ++ "' reduces to '" ++ show norm ++ "'"
-            --let val = eval (ctx,ctxToEnv ctx) t --TODO
-            --liftIO . putStrLn $ "'" ++ show t ++ "' evaluates to " ++ show val
-            
+            printLnIO $ "'" ++ show t ++ "' reduces to '" ++ show norm ++ "'"
+            --printLnIO $ "'" ++ show t ++ "' evaluates to '" ++ show (eval ctx emptyDirEnv t) ++ "'"
             put (ctx,t,lockedNames)
             return True
 checkSingleToplevel' (Declaration s t) = do
     (unlockedCtx,ans,lockedNames) <- get
     let ctx = getLockedCtx lockedNames unlockedCtx
-    liftIO . putStrLn $ "\nType-checking term '" ++ show s ++ "' of type '" ++ show t  ++ "'"
+    printLnIO $ "\nType-checking term '" ++ show s ++ "' of type '" ++ show t  ++ "'"
     case addDecl ctx (s,t) of
         Left err -> do
             liftIO . showErr $ err
             return False
         Right ctx' -> do
-            liftIO . putStrLn $ "Declaration check OK!"
-            put (ctx',ans,lockedNames)
+            printLnIO $ "Declaration check OK!"
+            put (ctx',t,lockedNames)
             return True
 checkSingleToplevel' (Definition s t e) = do
     (unlockedCtx,ans,lockedNames) <- get
     let ctx = getLockedCtx lockedNames unlockedCtx
-    liftIO . putStrLn $ "\nType-checking term '" ++ show s ++ "' of type '" ++ show t  ++ 
+    printLnIO $ "\nType-checking term '" ++ show s ++ "' of type '" ++ show t  ++ 
         "' and body '" ++ show e ++ "'"
     case addDef ctx (s,t,e) of
         Left err -> do
             liftIO . showErr $ err
             return False
         Right ctx' -> do
-            liftIO . putStrLn $ "Type check OK!"
-            put (ctx',ans,lockedNames)
+            printLnIO $ "Type check OK!"
+            put (ctx',e,lockedNames)
             return True
 
 
@@ -162,21 +162,28 @@ doRepl = do
         [":q"] -> do
             liftIO exitSuccess
         [":ans"] -> do
-            liftIO . putStrLn $ show ans
+            printLnIO $ show ans
         [":ctx"] -> do
             liftIO . printCtxLn $ ctx
         [":head"] -> do
             let ans' = headRed ctx ans
-            liftIO . putStrLn $ show ans'
+            printLnIO $ show ans'
             put (ctx,ans',lockedNames)
         ":head" : sterm -> do
             case pTerm (myLexer (intercalate " " sterm)) of
                 Left err ->
-                    liftIO . putStrLn $ "could not parse term"
+                    printLnIO $ "could not parse term"
                 Right term -> do
                     let ans' = headRed ctx term
-                    liftIO . putStrLn $ show ans'
+                    printLnIO $ show ans'
                     put (ctx,ans',lockedNames)
+        ":conv" : sterm -> do
+            case pTerm (myLexer (intercalate " " sterm)) of
+                Left err ->
+                    printLnIO $ "could not parse term"
+                Right term -> do
+                    printLnIO $ if conv (keys ctx) (eval ctx emptyDirEnv term) (eval ctx emptyDirEnv ans) then "ok" else "no"
+                    --put (ctx,ans',lockedNames)
         ":clear" : idents -> do
             let ctx' = foldl removeFromCtx ctx (map Ident idents)
             put (ctx',ans,lockedNames)
@@ -186,7 +193,7 @@ doRepl = do
                 identsToAdd = filter isInCtx idents'
                 identsWrong = filter (not . isInCtx) idents'
             when (length identsWrong > 0) $
-                liftIO . putStrLn $ "identifier(s) " ++ intercalate ", " (map show identsWrong) ++
+                printLnIO $ "identifier(s) " ++ intercalate ", " (map show identsWrong) ++
                     " not found in the current context" 
             let lockedNames' = identsToAdd ++ lockedNames
             put (ctx,ans,lockedNames')
@@ -196,14 +203,14 @@ doRepl = do
         ":unlockall" : idents ->
             put (ctx,ans,[])
         [":printlock"] ->
-            liftIO . putStrLn $ "Locked names are: " ++ intercalate ", " (map show lockedNames)
+            printLnIO $ "Locked names are: " ++ intercalate ", " (map show lockedNames)
         [":help"] -> do
             liftIO printUsage
         otherwise -> do
             let ts = myLexer s
             case pToplevel ts of
                 Left err -> do
-                    liftIO . putStrLn $ "\nParse failed!"
+                    printLnIO $ "\nParse failed!"
                     liftIO . showErr $ err
                 Right toplevel -> do
                     --checkSingleToplevel (transformToplevel (keys ctx) toplevel)
@@ -244,7 +251,7 @@ main = do
                 res <- foldM (\b fp -> (b &&) <$> runFile fp) True fs
                 liftIO $ unless res $ exitSuccess
                 (ctx,_,_) <- get
-                liftIO . putStrLn $ "\nCurrent context is:"
+                printLnIO $ "\nCurrent context is:"
                 liftIO . printCtxLn $ ctx
                 doRepl
             ) initReplState
@@ -277,3 +284,6 @@ printIO :: String -> StateT ReplState IO ()
 printIO s = liftIO $ do
     putStr s
     hFlush stdout
+
+printLnIO :: String -> StateT ReplState IO ()
+printLnIO s = printIO $ s ++ "\n"

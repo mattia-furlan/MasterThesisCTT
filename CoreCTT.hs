@@ -4,7 +4,6 @@
 module CoreCTT where
 
 import Data.List (intercalate,delete,deleteBy)
---import Data.Map (Map,toList,fromList,elems,keys)
 import Data.Maybe (fromJust)
 import Data.Set (Set(..))
 
@@ -14,14 +13,14 @@ import Interval
 {- Syntax (terms/values) -}
 
 data Term
-    = Var Ident (Maybe Value)
+    = Var Ident (Maybe Value)                --Neutral
     | Universe
     | Abst Ident Term Term
-    | App Term Term
+    | App Term Term (Maybe Value)            --Neutral
     | Nat
     | Zero
     | Succ Term
-    | Ind Term Term Term Term
+    | Ind Term Term Term Term (Maybe Value)  --Neutral
     {- Cubical -}
     | I
     | I0 | I1
@@ -50,10 +49,11 @@ isNumeral _ = (False,0)
 
 isNeutral :: Value -> Bool
 isNeutral v = case v of
-    Var _ _     -> True
-    App _ _     -> True
-    Ind _ _ _ _ -> True
-    otherwise    -> False
+    Var _ _       -> True
+    App _ _ _     -> True
+    Ind _ _ _ _ _ -> True
+    otherwise     -> False
+
 
 -- Generates a new name starting from 'x' (maybe too inefficient - TODO)
 newVar :: [Ident] -> Ident -> Ident
@@ -61,8 +61,8 @@ newVar used x = if x `elem` used then newVar used (Ident $ show x ++ "'") else x
 
 collectApps :: Term -> [Term] -> (Term,[Term])
 collectApps t apps = case t of
-    App t1 t2' -> collectApps t1 (t2' : apps)
-    otherwise -> (t,apps)
+    App t1 t2' _ -> collectApps t1 (t2' : apps)
+    otherwise    -> (t,apps)
 
 collectAbsts :: Term -> [(Ident,Term)] -> (Term,[(Ident,Term)])
 collectAbsts t absts = case t of
@@ -71,7 +71,7 @@ collectAbsts t absts = case t of
 
 class SyntacticObject a where
     containsVar :: Ident -> a -> Bool
-    containsVar s x = s `elem` (vars x) --slower? TODO
+    containsVar s x = s `elem` (freeVars x)
     vars :: a -> [Ident]
     freeVars :: a -> [Ident]
 
@@ -85,45 +85,45 @@ instance SyntacticObject System where
 
 instance SyntacticObject Term where
     vars t = case t of
-        Var s _       -> [s]
-        Universe      -> []
-        Abst s t e    -> vars t ++ vars e
-        App fun arg   -> vars fun ++ vars arg
-        Nat           -> []
-        Zero          -> []
-        Succ t        -> vars t
-        Ind ty b s n  -> vars ty ++ vars b ++ vars s ++ vars n
-        I             -> []
-        I0            -> []
-        I1            -> []
-        Sys sys       -> vars sys
-        Partial phi t -> vars phi ++ vars t
-        Restr sys t   -> vars sys ++ vars t
+        Var s _           -> [s]
+        Universe          -> []
+        Abst s t e        -> vars t ++ vars e
+        App fun arg _     -> vars fun ++ vars arg
+        Nat               -> []
+        Zero              -> []
+        Succ t            -> vars t
+        Ind ty b s n _    -> vars ty ++ vars b ++ vars s ++ vars n
+        I                 -> []
+        I0                -> []
+        I1                -> []
+        Sys sys           -> vars sys
+        Partial phi t     -> vars phi ++ vars t
+        Restr sys t       -> vars sys ++ vars t
         Comp psi x0 fam u -> vars psi ++ vars x0 ++ vars fam ++ vars u
     freeVars t = case t of
-        Var s _       -> [s]
-        Universe      -> []
-        Abst s t e    -> freeVars t ++ filter (/= s) (freeVars e)
-        App fun arg   -> freeVars fun ++ freeVars arg
-        Nat           -> []
-        Zero          -> []
-        Succ t        -> freeVars t
-        Ind ty b s n  -> freeVars ty ++ freeVars b ++ freeVars s ++ freeVars n
-        I             -> []
-        I0            -> []
-        I1            -> []
-        Sys sys       -> freeVars sys
-        Partial phi t -> freeVars phi ++ freeVars t
-        Restr sys t   -> freeVars sys ++ freeVars t
+        Var s _           -> [s]
+        Universe          -> []
+        Abst s t e        -> freeVars t ++ filter (/= s) (freeVars e)
+        App fun arg _     -> freeVars fun ++ freeVars arg
+        Nat               -> []
+        Zero              -> []
+        Succ t            -> freeVars t
+        Ind ty b s n _    -> freeVars ty ++ freeVars b ++ freeVars s ++ freeVars n
+        I                 -> []
+        I0                -> []
+        I1                -> []
+        Sys sys           -> freeVars sys
+        Partial phi t     -> freeVars phi ++ freeVars t
+        Restr sys t       -> freeVars sys ++ freeVars t
         Comp psi x0 fam u -> freeVars psi ++ freeVars x0 ++ freeVars fam ++ freeVars u
 
 instance SyntacticObject Formula where
     vars ff = case ff of
-        FTrue -> []
-        FFalse -> []
-        Eq0 s' -> [s']
-        Eq1 s' -> [s']
-        Diag s1 s2 -> [s1,s2]
+        FTrue        -> []
+        FFalse       -> []
+        Eq0 s        -> [s]
+        Eq1 s        -> [s]
+        Diag s1 s2   -> [s1,s2]
         ff1 :/\: ff2 -> vars ff1 ++ vars ff2
         ff1 :\/: ff2 -> vars ff1 ++ vars ff2
     freeVars ff = vars ff
@@ -135,11 +135,11 @@ checkTermShadowing vars t = case t of
     Abst (Ident "") t e -> checkTermShadowing vars t && checkTermShadowing vars e
     Abst s t e          -> s `notElem` vars &&
         checkTermShadowing (s : vars) t && checkTermShadowing (s : vars) e 
-    App fun arg         -> checkTermShadowing vars fun && checkTermShadowing vars arg
+    App fun arg _       -> checkTermShadowing vars fun && checkTermShadowing vars arg
     Nat                 -> True
     Zero                -> True
     Succ n              -> checkTermShadowing vars n
-    Ind ty b s n        -> checkTermShadowing vars ty && checkTermShadowing vars b &&
+    Ind ty b s n _      -> checkTermShadowing vars ty && checkTermShadowing vars b &&
         checkTermShadowing vars s && checkTermShadowing vars n
     I                   -> True
     I0                  -> True
@@ -175,17 +175,6 @@ mapElems f = map (\(s,v) -> (s,f v))
 at :: (Eq k) => [(k,a)] -> k -> a
 al `at` s = fromJust (lookup s al)
 
-{- Evaluation enviroments -}
-
-{-type Env = [(Ident,EnvEntry)]
-
-data EnvEntry = Val Value
-              | EDef Term Term  --TODO not needed anymore since `eval` gets the Ctx
-    deriving (Eq, Ord)
-
-emptyEnv :: Env
-emptyEnv = []-}
-
 {- Contexts -}
 
 type Ctx = [(Ident,CtxEntry)]
@@ -210,13 +199,6 @@ instance SyntacticObject CtxEntry where
         Def ty def -> freeVars ty ++ freeVars def
         VDecl _     -> [] --TODO
         Val _      -> [] --TODO
-
-{-ctxToEnv :: Ctx -> Env
-ctxToEnv ctx = concatMap getEnvEntry (zip (keys ctx) (elems ctx))
-    where
-        getEnvEntry :: (Ident,CtxEntry) -> [(Ident,EnvEntry)]
-        getEnvEntry (s,(Decl ty)) = []
-        getEnvEntry (s,(Def ty val)) = [(s,(EDef ty val))]-}
 
 getLockedCtx :: [Ident] -> Ctx -> Ctx
 getLockedCtx idents ctx = foldr getLockedCtx' ctx idents
