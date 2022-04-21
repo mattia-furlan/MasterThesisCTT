@@ -65,11 +65,10 @@ Term : Term1 { $1 }
      | '[' Ident ':' Term ']' Term { CoreCTT.Abst $2 $4 $6 }
      | '[' Formula ']' Term { CoreCTT.Partial $2 $4 }
      | System Term { CoreCTT.Restr $1 $2 }
-     --| '[' Formula '->' Term ']' Term { CoreCTT.Restr $2 $4 $6 }
 
 Term1 :: { CoreCTT.Term }
 Term1 : Term2 { $1 }
-      | Term1 Term2 { CoreCTT.App $1 $2 }
+      | Term1 Term2 { CoreCTT.App $1 $2 Nothing }
 
 Term2 :: { CoreCTT.Term }
 Term2 : Term3 { $1 }
@@ -78,7 +77,7 @@ Term2 : Term3 { $1 }
       | 'N' { CoreCTT.Nat }
       | '0' { CoreCTT.Zero }
       | 'S' Term2 { CoreCTT.Succ $2 }
-      | 'ind' Term2 Term2 Term2 Term2 { CoreCTT.Ind $2 $3 $4 $5 }
+      | 'ind' Term2 Term2 Term2 Term2 { CoreCTT.Ind $2 $3 $4 $5 Nothing }
       | 'comp' Formula Term2 Term2 Term2 { CoreCTT.Comp $2 $3 $4 $5 }
       | 'I' { CoreCTT.I }
 
@@ -118,7 +117,6 @@ System :: { CoreCTT.System }
 System : '[' ListSysElem ']' { $2 }
 
 SysElem :: { (Formula,CoreCTT.Term) }
---SysElem : '(' Formula ')' '->' Term { ($2,$5) }
 SysElem : Formula '->' Term { ($1,$3) }
 
 ListSysElem :: { [(Formula,CoreCTT.Term)] }
