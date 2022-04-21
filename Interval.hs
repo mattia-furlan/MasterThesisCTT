@@ -109,7 +109,7 @@ simplifyDNF dnf = if Set.empty `Set.member` dnf then
     where
         dnf' = Set.filter (not . Set.null) dnf
         toConj :: DirEnv -> [Set (Ident,Interval)]
-        toConj dirs@(ones,zeros,_,_) = if any (`elem` ones) zeros || any (`elem` zeros) ones then
+        toConj dirs@(ones,zeros,_) = if any (`elem` ones) zeros || any (`elem` zeros) ones then
                 []
             else
                 [fromList (toSubsts dirs)]
@@ -181,13 +181,13 @@ equalFormulas ff1 ff2 = (simplifyDNF . toDNF) ff1 == (simplifyDNF . toDNF) ff2
 
 {- Directions enviroment -}
 
-type DirEnv = ([Ident],[Ident],[[Ident]],[(Ident,Ident)]) --zeros, ones, diags, substitutions
+type DirEnv = ([Ident],[Ident],[[Ident]]) --zeros, ones, diags
 
 emptyDirEnv :: DirEnv  
-emptyDirEnv = ([],[],[],[])
+emptyDirEnv = ([],[],[])
 
 lookupDir :: Ident -> DirEnv -> Maybe Interval
-lookupDir s (zeros,ones,diags,_) = if s `elem` zeros then
+lookupDir s (zeros,ones,diags) = if s `elem` zeros then
         Just IZero
     else if s `elem` ones then
         Just IOne
@@ -196,11 +196,7 @@ lookupDir s (zeros,ones,diags,_) = if s `elem` zeros then
         part:_ -> Just (IVar (head part))
 
 subst :: DirEnv -> Formula -> Formula
-subst dirs{-(zeros,ones,diags,subs)-} ff = foldl singleSubst ff (toSubsts dirs) --substs
-    {-where substs  = substs0 ++ substs1 ++ substsd
-          substs0 = map (\s -> (s,IZero)) zeros
-          substs1 = map (\s -> (s,IOne)) ones
-          substsd = concatMap (\part -> map (\s -> (s,IVar (head part))) part) diags-}
+subst dirs ff = foldl singleSubst ff (toSubsts dirs)
 
 findPartition :: [[Ident]] -> Ident -> [Ident]
 findPartition diags s = case filter (s `elem`) diags of
@@ -208,21 +204,21 @@ findPartition diags s = case filter (s `elem`) diags of
         l  -> head l
 
 addZero :: DirEnv -> Ident -> DirEnv
-addZero (zeros,ones,diags,subs) s = let
+addZero (zeros,ones,diags) s = let
     toadd = case filter (s `elem`) diags of
         [] -> [s]
         l  -> head l
-    in (toadd ++ zeros,ones,delete toadd diags,subs)
+    in (toadd ++ zeros,ones,delete toadd diags)
 
 addOne :: DirEnv -> Ident -> DirEnv
-addOne (zeros,ones,diags,subs) s = let
+addOne (zeros,ones,diags) s = let
     toadd = case filter (s `elem`) diags of
         [] -> [s]
         l  -> head l
-    in (zeros,toadd ++ ones,delete toadd diags,subs)
+    in (zeros,toadd ++ ones,delete toadd diags)
 
 addDiag :: DirEnv -> Ident -> Ident -> DirEnv
-addDiag dirs@(zeros,ones,diags,subs) s1 s2 =
+addDiag dirs@(zeros,ones,diags) s1 s2 =
     if s1 == s2 then
         dirs
     else if s1 `elem` zeros then
@@ -241,7 +237,7 @@ addDiag dirs@(zeros,ones,diags,subs) s1 s2 =
              par2 = findPartition diags'' s2
              --eventually join the two partitions (ex. [i,k] [j,k,l] gets joined into [i,j,k,l])
              diags''' = if par1 /= par2 then (delete par2 (delete par1 diags'')) ++ [par1++par2] else diags''
-        in (zeros,ones,diags''',subs)
+        in (zeros,ones,diags''')
 
 addConj ::  DirEnv -> [(Ident,Interval)] -> DirEnv
 addConj dirs conj = foldl addAtomic dirs conj
@@ -253,17 +249,14 @@ addConj dirs conj = foldl addAtomic dirs conj
             IVar s' -> addDiag dirs s s'
 
 toSubsts :: DirEnv -> [(Ident,Interval)]
-toSubsts (zeros,ones,diags,subs) = substs ++ substs0 ++ substs1 ++ substsd
-    where substs  = map (\(from,to) -> (from,IVar to)) subs
-          substs0 = map (\s -> (s,IZero)) zeros
+toSubsts (zeros,ones,diags) = substs0 ++ substs1 ++ substsd
+    where substs0 = map (\s -> (s,IZero)) zeros
           substs1 = map (\s -> (s,IOne)) ones
           substsd = concatMap (\part -> map (\s -> (s,IVar (head part))) part) diags
 
 toDirEnv :: [(Ident,Interval)] -> DirEnv
 toDirEnv conj = addConj emptyDirEnv conj
 
-addISubst :: DirEnv -> Ident -> Ident -> DirEnv
-addISubst (zeros,ones,diags,subs) from to = (zeros,ones,diags,subs ++ [(from,to)])
 
 {- Examples -}
 

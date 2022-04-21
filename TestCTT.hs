@@ -113,7 +113,7 @@ checkSingleToplevel' :: Toplevel -> StateT ReplState IO Bool
 checkSingleToplevel' (Example t) = do
     (unlockedCtx,_,lockedNames) <- get
     let ctx = getLockedCtx lockedNames unlockedCtx
-    let ty = inferType ctx emptyDirEnv t
+    let ty = inferType ctx t
     case ty of
         Left err -> do
            liftIO $ showErr err
@@ -122,7 +122,7 @@ checkSingleToplevel' (Example t) = do
             printLnIO $ "\n'" ++ show t ++ "' has (inferred) type '" ++ show tyVal ++ "'"
             let norm = normalize ctx t --since 't' typechecks, 't' must have a normal form
             printLnIO $ "'" ++ show t ++ "' reduces to '" ++ show norm ++ "'"
-            --printLnIO $ "'" ++ show t ++ "' evaluates to '" ++ show (eval ctx emptyDirEnv t) ++ "'"
+            --printLnIO $ "'" ++ show t ++ "' evaluates to '" ++ show (eval ctx t) ++ "'"
             put (ctx,t,lockedNames)
             return True
 checkSingleToplevel' (Declaration s t) = do
@@ -182,7 +182,7 @@ doRepl = do
                 Left err ->
                     printLnIO $ "could not parse term"
                 Right term -> do
-                    printLnIO $ if conv (keys ctx) (eval ctx emptyDirEnv term) (eval ctx emptyDirEnv ans) then "ok" else "no"
+                    printLnIO $ if conv (keys ctx) (eval ctx term) (eval ctx ans) then "ok" else "no"
                     --put (ctx,ans',lockedNames)
         ":clear" : idents -> do
             let ctx' = foldl removeFromCtx ctx (map Ident idents)
@@ -221,15 +221,15 @@ doRepl = do
 -- Adds a definition to the current context 
 addDef :: Ctx -> (Ident,Term,Term) -> Either ErrorString Ctx
 addDef ctx (s,t,e) = do
-    checkType ctx emptyDirEnv t Universe -- Is 't' really a type?
-    let tVal = eval ctx emptyDirEnv t
-    checkType ctx emptyDirEnv e tVal -- Has 'e' type 't'?
+    checkType ctx t Universe -- Is 't' really a type?
+    let tVal = eval ctx t
+    checkType ctx e tVal -- Has 'e' type 't'?
     Right $ extend ctx s (Def t e)
 
 -- Adds a definition to the current context 
 addDecl :: Ctx -> (Ident,Term) -> Either ErrorString Ctx
 addDecl ctx (s,t) = do
-    checkType ctx emptyDirEnv t Universe -- Is 't' really a type?
+    checkType ctx t Universe -- Is 't' really a type?
     Right $ extend ctx s (Decl t)
 
 printCtxLn :: Ctx -> IO ()

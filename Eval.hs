@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Eval where
 
 import Data.List (intercalate)
@@ -12,44 +14,40 @@ myTrace :: String -> a -> a
 myTrace s = id
 --myTrace s x = trace s x
 
-lookupType :: Ident -> Ctx -> DirEnv -> Value
-lookupType s ctx dirs = do
+lookupType :: Ident -> Ctx -> Value
+lookupType s ctx = do
     let mentry = lookup s ctx
     case mentry of
         Nothing -> error $ "[lookupType] got unknown identifier " ++ show s
         Just entry -> case entry of
-            Decl ty     -> eval ctx dirs ty
-            Def  ty def -> eval ctx dirs ty
-            VDecl tyV   -> tyV
+            Decl ty     -> eval ctx ty
+            Def  ty def -> eval ctx ty
 
-eval :: Ctx -> DirEnv -> Term -> Value
-eval ctx dirs t = myTrace ("[eval] " ++ show t ++ ", dirs = " ++ show dirs ++ ", ctx = " ++ showCtx (take 4 ctx)) $ case t of
-    Var s mty -> case lookupDir s dirs of
-        Just i -> toValue i
-        Nothing -> case lookup s ctx of -- `s` must be declared in `ctx`
-            Nothing -> error $ "[eval] not found var " ++ show s ++ " in ctx" --Var s mty
-            Just (Val v)     -> v
-            Just (Decl ty)   -> Var s (Just $ eval ctx dirs ty)
-            Just (VDecl tyV) -> Var s (Just tyV)
-            Just (Def ty e)  -> eval ctx dirs e
+eval :: Ctx -> Term -> Value
+eval ctx t = {-myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx (take 4 ctx)) $-} case t of
+    Var s Nothing -> case lookup s ctx of -- `s` must be declared in `ctx`
+        Nothing -> error $ "[eval] not found var " ++ show s ++ " in ctx" --Var s mty
+        Just (Val v)     -> v
+        Just (Decl ty)   -> Var s (Just $ eval ctx ty)
+        Just (Def ty e)  -> eval ctx e
     Universe -> Universe
-    Abst s t e -> Closure s (eval ctx dirs t) e (ctx,dirs)
-    App e1 e2 _ -> doApply (eval ctx dirs e1) (eval ctx dirs e2)
+    Abst s t e -> Closure s t e ctx
+    App e1 e2 Nothing -> doApply (eval ctx e1) (eval ctx e2)
     Nat -> Nat
     Zero -> Zero
-    Succ t -> Succ (eval ctx dirs t)
-    Ind ty base step n _ -> doInd ty' base' step' n'
-        where ty'   = eval ctx dirs ty
-              base' = eval ctx dirs base
-              step' = eval ctx dirs step
-              n'    = eval ctx dirs n
+    Succ t -> Succ (eval ctx t)
+    Ind ty base step n Nothing -> doInd ty' base' step' n'
+        where ty'   = eval ctx ty
+              base' = eval ctx base
+              step' = eval ctx step
+              n'    = eval ctx n
     I  -> I
     I0 -> I0
     I1 -> I1
-    Sys sys       -> doSystem (evalSystem ctx dirs sys)
-    Partial phi t -> doPartial (evalFormula dirs phi) (eval ctx dirs t)
-    Restr sys t   -> Restr (evalSystem ctx dirs sys) (eval ctx dirs t)
-    
+    Sys sys       -> doSystem (evalSystem ctx sys)
+    Partial phi t -> doPartial (evalFormula ctx phi) (eval ctx t)
+    Restr sys t   -> Restr (evalSystem ctx sys) (eval ctx t)
+
 toValue :: Interval -> Value
 toValue IZero = I0
 toValue IOne  = I1
@@ -60,12 +58,15 @@ toInterval I0 = IZero
 toInterval I1 = IOne
 toInterval (Var s _) = IVar s
 
-evalFormula :: DirEnv -> Formula -> Formula
-evalFormula dirs ff = simplify $ subst dirs ff
+evalFormula :: Ctx -> Formula -> Formula
+evalFormula ctx ff = foldl singleSubst ff substs
+    where names  = vars ff
+          substs = concatMap (\case (s,Val v) | s `elem` names -> [(s,toInterval v)] ;
+                                    otherwise -> []) ctx
 
-evalSystem :: Ctx -> DirEnv -> System -> System
-evalSystem ctx dirs sys = filter (\(phi,_) -> phi /= FFalse) $
-    map (\(phi,t) -> (evalFormula dirs phi, eval ctx dirs t)) sys
+evalSystem :: Ctx -> System -> System
+evalSystem ctx sys = filter (\(phi,_) -> phi /= FFalse) $
+    map (\(phi,t) -> (evalFormula ctx phi, eval ctx t)) sys
 
 --Applies substitutions to already formed values (needed when calling `conv`)
 simplifyValue :: DirEnv -> Value -> Value
@@ -81,6 +82,14 @@ simplifyValue dirs v = v
 
 -- Evaluates a closure
 doApply :: Value -> Value -> Value
+doApply fun@(Closure s t e ctx) arg = 
+    let ctx' = if s == Ident "" then ctx
+               else extend (extend ctx s (Decl t)) s (Val arg)
+    in eval ctx' e  -- I don't need to add `t` to `ctx` (?)
+doApply neutral arg = neutral @@ arg -- e.g. reduce `p0` to `a` if `p : Path A a b`
+
+{-
+doApply :: Value -> Value -> Value
 doApply fun@(Closure s tVal e (ctx,dirs)) arg = myTrace ("[doApply] fun = " ++ show fun ++ ", arg = " ++ show arg) $ case tVal of
     I -> case arg of
         Var s' _ -> eval (extend ctx s (Decl I)) (addISubst dirs s s') e
@@ -88,7 +97,7 @@ doApply fun@(Closure s tVal e (ctx,dirs)) arg = myTrace ("[doApply] fun = " ++ s
     _ -> let ctx' = if s == Ident "" then ctx else (extend (extend ctx s (VDecl tVal)) s (Val arg))
         in eval ctx' dirs e  -- I don't need to add `t` to `ctx` (?)
 doApply neutral arg = neutral @@ arg -- e.g. reduce `p0` to `a` if `p : Path A a b`
-
+-}
 
 (@@) :: Value -> Value -> Value
 neutral @@ arg = myTrace ("[@@] " ++ show neutral ++ " @@ " ++ show arg) $
@@ -132,32 +141,31 @@ readBack used (Sys sys) = Sys (mapElems (readBack used) sys)
 readBack used (Partial phi ty) = Partial phi (readBack used ty)
 readBack used (Restr sys ty) = Restr (mapElems (readBack used) sys) (readBack used ty)
 readBack used (Ind ty b e n _) = Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n) Nothing
-readBack used fun@(Closure s tVal e (ctx,dirs)) = let
-        used' = myTrace ("[readBack] begin " ++ show fun) $ used ++ keys ctx
+readBack used fun@(Closure s t e ctx) = let
+        used' = used ++ keys ctx
         s'    = newVar used' s
-        t'    = readBack (s' : used') tVal
-        eVal  = doApply fun (Var s' (Just tVal))
+        t'    = t -- ? -- readBack (s' : used') tVal
+        eVal  = doApply fun (Var s' Nothing)
         e'    = readBack (s' : used') eVal
-        in myTrace ("[readBack] s = " ++ show s ++ ", s' = " ++ show s' ++ ", eVal = " ++ show eVal ++ ", e' = " ++ show e') $ Abst s' t' e'
+        in Abst s' t' e'
 readBack used v = v
 
 
 normalize :: Ctx -> Term -> Term
-normalize ctx e = readBack (keys ctx) (eval ctx emptyDirEnv e)
-
+normalize ctx e = readBack (keys ctx) (eval ctx e)
 
 {- Linear head reduction -}
 
 headRedV :: Ctx -> Term -> Value
 headRedV ctx (Var s _) = getLeastEval ctx s
-headRedV ctx (App k n _) = doApply (headRedV ctx k) (eval ctx emptyDirEnv n)
-headRedV ctx (Ind ty b s k _) = doInd (eval ctx emptyDirEnv ty) (eval ctx emptyDirEnv b) (eval ctx emptyDirEnv s) (headRedV ctx k)
-headRedV ctx t = eval ctx emptyDirEnv t
+headRedV ctx (App k n _) = doApply (headRedV ctx k) (eval ctx n)
+headRedV ctx (Ind ty b s k _) = doInd (eval ctx ty) (eval ctx b) (eval ctx s) (headRedV ctx k)
+headRedV ctx t = eval ctx t
 
 --Gets the least evaluated form of 'x' from context
 getLeastEval :: Ctx -> Ident -> Value
 getLeastEval ctx s = case lookup s ctx of
-    Just (Def _ e) -> eval ctx emptyDirEnv e
+    Just (Def _ e) -> eval ctx e
     otherwise      -> Var s Nothing
 
 --Do head reduction step
@@ -172,7 +180,7 @@ headRed ctx t = case t of
 {- Printing utilities (should be in AbsCTT but these need 'readBack') -}
 
 instance Show Term where
-    show t = printTerm' 0 t -- (readBack [] t)
+    show t = printTerm' 0 (readBack [] t)
 
 printTerm' :: Int -> Term -> String
 printTerm' i t = case t of
@@ -203,7 +211,7 @@ printTerm' i t = case t of
     Sys sys      -> showSystem sys
     Partial phi t-> "[" ++ show phi ++ "]" ++ printTerm' 0 t
     Restr sys t  -> showSystem sys ++ printTerm' 0 t
-    Closure s tyV e (ctx,dirs)    -> "{" ++ show s ++ " : " ++ show tyV ++ "," ++ show e ++ {-"," ++ showCtx ctx ++ ";" ++ show dirs ++-} "}"
+    --Closure s tyV e ctx    -> "{" ++ show s ++ " : " ++ show tyV ++ "," ++ show e ++ {-"," ++ showCtx ctx ++-} "}"
     where (par1,par2) = if i == 0 then ("","") else ("(",")")
 
 
@@ -216,7 +224,6 @@ showOnlyShort s = if length s < 0 then "..." else s --debug
 showEntry :: (Ident,CtxEntry) -> String
 showEntry (s,Decl ty) = show s ++ " : " ++ showOnlyShort (show ty)
 showEntry (s,Def ty val) = show s ++ " : " ++ showOnlyShort (show ty) ++ " = " ++ showOnlyShort (show val)
-showEntry (s,VDecl tyV) = show s ++ " :v " ++ show tyV
 showEntry (s,Val val) = show s ++ " => " ++ show val
 
 showSystem :: System -> String

@@ -29,7 +29,7 @@ data Term
     | Restr System Term
     | Comp Formula Term Term Term
     {- Closure (values only) -}
-    | Closure Ident Value Term (Ctx,DirEnv) 
+    | Closure Ident Term Term Ctx 
   deriving (Eq, Ord)
 
 type Value = Term
@@ -181,7 +181,6 @@ type Ctx = [(Ident,CtxEntry)]
 
 data CtxEntry = Decl Term      -- Type
               | Def Term Term  -- Type and definition
-              | VDecl Value    -- Evaluated type
               | Val Value      -- For `eval`
     deriving (Eq, Ord)
 
@@ -192,12 +191,10 @@ instance SyntacticObject CtxEntry where
     vars entry = case entry of
         Decl t     -> vars t
         Def ty def -> vars ty ++ vars def
-        VDecl _     -> [] --TODO
         Val _      -> [] --TODO
     freeVars entry = case entry of
         Decl t     -> freeVars t
         Def ty def -> freeVars ty ++ freeVars def
-        VDecl _     -> [] --TODO
         Val _      -> [] --TODO
 
 getLockedCtx :: [Ident] -> Ctx -> Ctx
@@ -218,6 +215,12 @@ removeFromCtx ctx s = if s `elem` (keys ctx) then
         in foldl removeFromCtx ctx' fall
     else
         ctx
+
+toCtx :: DirEnv -> Ctx
+toCtx (zeros,ones,diags) = substs0 ++ substs1 ++ substsd
+    where substs0 = map (\s -> (s,Val I0)) zeros
+          substs1 = map (\s -> (s,Val I1)) ones
+          substsd = concatMap (\part -> map (\s -> (s,Val $ Var (head part) (Just I))) part) diags
 
 
 {- Cubical -}
