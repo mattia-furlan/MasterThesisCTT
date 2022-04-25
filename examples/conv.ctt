@@ -1,0 +1,16 @@
+Path : [A:U]A -> A -> U = [A:U][a0:A][a1:A][i:I][(i = 0) -> a0, (i = 1) -> a1]A ;
+refl : [A:U][a:A]Path A a a = [A:U][a:A]I -> a ;
+A : U ;
+a : A ;
+b : A ;
+x : Path A a b ;
+P : A -> U ;
+i : I ;
+j : I ;
+c : P (x i) ;
+d : P (x j) ;
+
+--example : [i = j]P(x i) = [i = j -> c, i = j -> d] ;
+
+
+example : [i = j]P(x i) = [i = j -> d] ;

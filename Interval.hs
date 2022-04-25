@@ -42,8 +42,10 @@ instance Show ConjFormula where
             intercalate " /\\ " (map show cf)
 
 instance Show DisjFormula where
-        show (Disj df) = if null df then
+        show disj@(Disj df) = if disj == fFalse then
             "False"
+        else if disj == fTrue then
+            "True"
         else
             intercalate " \\/ " (map (\cf -> "(" ++ show cf ++ ")") df)
 
@@ -61,23 +63,19 @@ isFalse = (== fFalse)
 
 {- Implication and equivalence -}
 
-impDisj :: DisjFormula -> DisjFormula -> Bool
-impDisj (Disj df1) (Disj df2) = isFalse (Disj df1) || isTrue (Disj df2) ||
-    all (\cf1 -> any (impConj cf1) df2) df1
+impDisj :: DirEnv -> DisjFormula -> DisjFormula -> Bool
+impDisj dirs (Disj df1) disj2 = if isFalse (Disj df1) || isTrue disj2 then
+        True
+    else if isFalse disj2 then
+        all (\cf1 -> inconsistent (addConj dirs cf1)) df1
+    else
+        all (\cf1 -> (addConj dirs cf1) `makesTrueDisj` disj2) df1
 
-impConj :: ConjFormula -> ConjFormula -> Bool
-impConj cf1 cf2 = conjToDirEnv cf1 `impDirEnv` conjToDirEnv cf2
-
-impDirEnv :: DirEnv -> DirEnv -> Bool
-impDirEnv dirs1@(zeros1,ones1,diags1) (zeros2,ones2,diags2) = inconsistent dirs1 ||
-    zeros2 `isSubset` zeros1 &&
-    ones2 `isSubset` ones1 &&
-    all (\part2 -> part2 `isSubset` zeros1 || part2 `isSubset` ones1 ||
-        any (part2 `isSubset`) diags1) diags2
+eqFormulas :: DirEnv -> DisjFormula -> DisjFormula -> Bool
+eqFormulas dirs disj1 disj2 = impDisj dirs disj1 disj2 && impDisj dirs disj2 disj1
 
 isSubset :: Eq a => [a] -> [a] -> Bool
 isSubset sub sup = all (`elem` sup) sub
-
 
 {- Directions enviroment -}
 
@@ -153,16 +151,11 @@ dirs@(zeros,ones,diags) `makesTrueAtomic` phi = case phi of
     Diag s1 s2 -> bothIn zeros || bothIn ones || any bothIn diags
         where bothIn set = s1 `elem` set && s2 `elem` set
 
-makesFalseAtomic :: DirEnv -> AtomicFormula -> Bool
-dirs@(zeros,ones,diags) `makesFalseAtomic` phi = case phi of
-    Eq0 s -> s `notElem` zeros
-    Eq1 s -> s `notElem` ones
-    Diag s1 s2 -> not (bothIn zeros && bothIn ones && any bothIn diags)
-        && s1 `elem` (getNames dirs) && s2 `elem` (getNames dirs) 
-        where bothIn set = s1 `elem` set && s2 `elem` set
+makesTrueConj :: DirEnv -> ConjFormula -> Bool
+makesTrueConj dirs (Conj cf) = all (dirs `makesTrueAtomic`) cf
 
-makesTrue :: DirEnv -> ConjFormula -> Bool
-makesTrue dirs (Conj cf) = all (dirs `makesTrueAtomic`) cf
+makesTrueDisj :: DirEnv -> DisjFormula -> Bool
+makesTrueDisj dirs (Disj df) = any (dirs `makesTrueConj`) df
 
 substAtomic :: (Ident,Ident) -> AtomicFormula -> AtomicFormula
 substAtomic (s,s') af = case af of
@@ -174,25 +167,35 @@ substAtomic (s,s') af = case af of
 substConj :: (Ident,Ident) -> ConjFormula -> ConjFormula
 substConj (s,s') (Conj cf) = Conj $ map (substAtomic (s,s')) cf
 
-substDisj :: (Ident,Ident) -> DisjFormula -> DisjFormula
-substDisj (s,s') (Disj df) = Disj $ map (substConj (s,s')) df 
-
 meet :: ConjFormula -> ConjFormula -> ConjFormula
 (Conj cf1) `meet` (Conj cf2) = Conj $ cf1 ++ cf2
 
-{-simplifyConjFormula :: DirEnv -> ConjFormula -> ConjFormula
-simplifyConjFormula dirs (Conj cf) = Conj $
-    if any (dirs `makesFalseAtomic`) cf then
-        []
-    else
-        filter (dirs `makesTrueAtomic`) cf
-
-simplifyDisjFormula :: DirEnv -> DisjFormula -> DisjFormula
-simplifyDisjFormula dirs (Disj df) = Disj $
-    filter (\(Conj cf) -> cf /= []) $ map (simplifyConjFormula dirs) df-}
 {-
-i = Ident "i"
-j = Ident "j"
-k = Ident "k"
-l = Ident "l"
+test :: Bool
+test = let 
+    i = Ident "i"
+    j = Ident "j"
+    k = Ident "k"
+    l = Ident "l"
+    d = Disj
+    c = Conj
+    ede = emptyDirEnv
+    imp = impDisj
+    nimp dirs p1 p2 = not (imp dirs p1 p2)
+    contra = \p -> imp ede p fFalse
+    in
+    imp ede fTrue fTrue &&
+    nimp ede fTrue fFalse &&
+    imp ede fFalse fTrue &&
+    imp ede fFalse fFalse &&
+    contra (d [c [Eq0 i,Eq1 i]]) &&
+    contra (d [c [Eq0 i,Diag i j,Eq1 j]]) &&
+    not (contra (d [c [Eq0 i,Diag i j,Diag j i]])) &&
+    imp ede (d [c [Eq0 i,Diag i k,Diag j i]]) (d [c [Eq0 i,Eq0 j]]) &&
+    imp (conjToDirEnv (Conj $ [Eq0 k])) (d [c [Eq0 i,Diag i k,Diag j i]]) (d [c [Eq0 i,Eq0 j,Diag j k]]) &&
+    imp (conjToDirEnv (Conj $ [Eq0 k,Eq1 i])) (d [c [Eq0 i,Diag i k,Diag j i]]) (d [c [Eq0 i,Eq0 j,Diag j k]]) &&
+    imp (conjToDirEnv (Conj $ [Eq0 k,Eq1 i])) (d [c [Diag i k,Diag j i]]) fFalse &&
+    imp (conjToDirEnv (Conj $ [Eq0 k,Eq1 i])) (d [c [Eq1 j,Diag k k,Diag j i]]) (d [c [Eq1 j,Eq1 i]])
 -}
+
+
