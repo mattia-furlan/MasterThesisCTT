@@ -7,7 +7,6 @@ module ParCTT
   , pProgram
   , pToplevel
   , pTerm
-  , pFormula
   , pSystem
   ) where
 
@@ -24,7 +23,6 @@ import LexCTT
 %name pProgram Program
 %name pToplevel Toplevel
 %name pTerm Term
-%name pFormula Formula
 %name pSystem System
 -- no lexer declaration
 %monad { Err } { (>>=) } { return }
@@ -63,7 +61,7 @@ Term :: { CoreCTT.Term }
 Term : Term1 { $1 }
      | Term1 '->' Term { CoreCTT.Abst (Ident "") $1 $3 }
      | '[' Ident ':' Term ']' Term { CoreCTT.Abst $2 $4 $6 }
-     | '[' Formula ']' Term { CoreCTT.Partial $2 $4 }
+     | '[' DisjFormula ']' Term { CoreCTT.Partial $2 $4 }
      | System Term { CoreCTT.Restr $1 $2 }
 
 Term1 :: { CoreCTT.Term }
@@ -78,7 +76,7 @@ Term2 : Term3 { $1 }
       | '0' { CoreCTT.Zero }
       | 'S' Term2 { CoreCTT.Succ $2 }
       | 'ind' Term2 Term2 Term2 Term2 { CoreCTT.Ind $2 $3 $4 $5 Nothing }
-      | 'comp' Formula Term2 Term2 Term2 { CoreCTT.Comp $2 $3 $4 $5 }
+      | 'comp' DisjFormula Term2 Term2 Term2 { CoreCTT.Comp $2 $3 $4 $5 }
       | 'I' { CoreCTT.I }
 
 Term3 :: { CoreCTT.Term }
@@ -94,32 +92,36 @@ ListToplevel :: { [CoreCTT.Toplevel] }
 ListToplevel : {- empty -} { [] }
              | Toplevel ';' ListToplevel { (:) $1 $3 }
 
-Formula :: { Formula }
-Formula : Formula1 { $1 }
-        | Formula '\\/' Formula1 { $1 :\/: $3 }
 
-Formula1 :: { Formula }
-Formula1 : Formula2 { $1 }
-         | Formula1 '/\\' Formula2 { $1 :/\: $3 }
+AtomicFormula :: { AtomicFormula }
+AtomicFormula : Ident '=' '0' { Eq0 $1 }
+              | Ident '=' '1' { Eq1 $1 }
+              | Ident '=' Ident { Diag $1 $3 }
 
-Formula2 :: { Formula }
-Formula2 : Formula3 { $1 }
-         | '1' { FTrue }
-         | '0' { FFalse }
-         | Ident '=' '0' { Eq0 $1 }
-         | Ident '=' '1' { Eq1 $1 }
-         | Ident '=' Ident { Diag $1 $3 }
+ConjFormula1 :: { [AtomicFormula] }
+ConjFormula1 : AtomicFormula { [$1] }
+             | AtomicFormula '/\\' ConjFormula1 { $1 : $3 }
 
-Formula3 :: { Formula }
-Formula3 : '(' Formula ')' { $2 }
+ConjFormula :: { ConjFormula }
+ConjFormula : ConjFormula1 { Conj $1 }
+            | '(' ConjFormula ')' { $2 }
+
+DisjFormula1 :: { [ConjFormula] }
+DisjFormula1 : ConjFormula { [$1] }
+             | ConjFormula '\\/' DisjFormula1 { $1 : $3 }
+             --| '(' DisjFormula1 ')' { $2 }
+
+DisjFormula :: { DisjFormula }
+DisjFormula : DisjFormula1 { Disj $1 }
 
 System :: { CoreCTT.System }
 System : '[' ListSysElem ']' { $2 }
 
-SysElem :: { (Formula,CoreCTT.Term) }
-SysElem : Formula '->' Term { ($1,$3) }
+SysElem :: { (ConjFormula,CoreCTT.Term) }
+SysElem : ConjFormula '->' Term { ($1,$3) }
+--SysElem : '(' ConjFormula ')' '->' Term { ($2,$5) }
 
-ListSysElem :: { [(Formula,CoreCTT.Term)] }
+ListSysElem :: { [(ConjFormula,CoreCTT.Term)] }
 ListSysElem : {- empty -} { [] }
             | SysElem { (:[]) $1 }
             | SysElem ',' ListSysElem { (:) $1 $3 }

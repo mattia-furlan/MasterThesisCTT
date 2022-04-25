@@ -6,6 +6,7 @@ module CoreCTT where
 import Data.List (intercalate,delete,deleteBy)
 import Data.Maybe (fromJust)
 import Data.Set (Set(..))
+import Control.Monad.State
 
 import Ident
 import Interval
@@ -23,11 +24,10 @@ data Term
     | Ind Term Term Term Term (Maybe Value)  --Neutral
     {- Cubical -}
     | I
-    | I0 | I1
     | Sys System
-    | Partial Formula Term
+    | Partial DisjFormula Term
     | Restr System Term
-    | Comp Formula Term Term Term
+    | Comp DisjFormula Term Term Term --TODO
     {- Closure (values only) -}
     | Closure Ident Term Term Ctx 
   deriving (Eq, Ord)
@@ -46,13 +46,6 @@ isNumeral Zero     = (True,0)
 isNumeral (Succ t) = (isNum,n + 1)
     where (isNum,n) = isNumeral t
 isNumeral _ = (False,0)
-
-isNeutral :: Value -> Bool
-isNeutral v = case v of
-    Var _ _       -> True
-    App _ _ _     -> True
-    Ind _ _ _ _ _ -> True
-    otherwise     -> False
 
 
 -- Generates a new name starting from 'x' (maybe too inefficient - TODO)
@@ -94,12 +87,11 @@ instance SyntacticObject Term where
         Succ t            -> vars t
         Ind ty b s n _    -> vars ty ++ vars b ++ vars s ++ vars n
         I                 -> []
-        I0                -> []
-        I1                -> []
         Sys sys           -> vars sys
         Partial phi t     -> vars phi ++ vars t
         Restr sys t       -> vars sys ++ vars t
         Comp psi x0 fam u -> vars psi ++ vars x0 ++ vars fam ++ vars u
+        Closure s t e ctx -> [s] ++ keys ctx
     freeVars t = case t of
         Var s _           -> [s]
         Universe          -> []
@@ -110,23 +102,26 @@ instance SyntacticObject Term where
         Succ t            -> freeVars t
         Ind ty b s n _    -> freeVars ty ++ freeVars b ++ freeVars s ++ freeVars n
         I                 -> []
-        I0                -> []
-        I1                -> []
         Sys sys           -> freeVars sys
         Partial phi t     -> freeVars phi ++ freeVars t
         Restr sys t       -> freeVars sys ++ freeVars t
         Comp psi x0 fam u -> freeVars psi ++ freeVars x0 ++ freeVars fam ++ freeVars u
+        Closure s t e ctx -> keys ctx
 
-instance SyntacticObject Formula where
-    vars ff = case ff of
-        FTrue        -> []
-        FFalse       -> []
+instance SyntacticObject AtomicFormula where
+    vars af = case af of
         Eq0 s        -> [s]
         Eq1 s        -> [s]
         Diag s1 s2   -> [s1,s2]
-        ff1 :/\: ff2 -> vars ff1 ++ vars ff2
-        ff1 :\/: ff2 -> vars ff1 ++ vars ff2
-    freeVars ff = vars ff
+    freeVars = vars
+
+instance SyntacticObject ConjFormula where
+    vars (Conj cf) = concatMap vars cf
+    freeVars = vars
+
+instance SyntacticObject DisjFormula where
+    vars (Disj df) = concatMap vars df
+    freeVars = vars
 
 checkTermShadowing :: [Ident] -> Term -> Bool
 checkTermShadowing vars t = case t of
@@ -142,8 +137,6 @@ checkTermShadowing vars t = case t of
     Ind ty b s n _      -> checkTermShadowing vars ty && checkTermShadowing vars b &&
         checkTermShadowing vars s && checkTermShadowing vars n
     I                   -> True
-    I0                  -> True
-    I1                  -> True
     Sys sys             -> all (checkTermShadowing vars) (elems sys)
     Partial phi t       -> checkTermShadowing vars t
     Restr sys t         -> all (checkTermShadowing vars) (elems sys) && checkTermShadowing vars t
@@ -187,6 +180,10 @@ data CtxEntry = Decl Term      -- Type
 emptyCtx :: Ctx
 emptyCtx = []
 
+getBindings :: Ctx -> [(Ident,Value)]
+getBindings ctx = map (\(s,Val v) -> (s,v))$ 
+    filter (\(_,entry) -> case entry of Val _ -> True; _ -> False) ctx
+
 instance SyntacticObject CtxEntry where
     vars entry = case entry of
         Decl t     -> vars t
@@ -216,16 +213,64 @@ removeFromCtx ctx s = if s `elem` (keys ctx) then
     else
         ctx
 
-toCtx :: DirEnv -> Ctx
-toCtx (zeros,ones,diags) = substs0 ++ substs1 ++ substsd
-    where substs0 = map (\s -> (s,Val I0)) zeros
-          substs1 = map (\s -> (s,Val I1)) ones
-          substsd = concatMap (\part -> map (\s -> (s,Val $ Var (head part) (Just I))) part) diags
-
 
 {- Cubical -}
 
-type System = [(Formula,Term)]
+type System = [(ConjFormula,Term)]
 
-getSystemFormula :: System -> Formula
-getSystemFormula = foldOr . keys
+getSystemFormula :: System -> DisjFormula
+getSystemFormula = Disj . map fst
+
+getFormula :: Value -> DisjFormula
+getFormula v = case v of
+    Sys sys       -> getSystemFormula sys
+    Partial phi v -> phi
+    Restr sys v   -> getSystemFormula sys
+    otherwise     -> Disj $ []
+
+isPartial :: Value -> Bool
+isPartial v = case v of
+    Partial _ _ -> True
+    otherwise   -> False
+
+isRestr :: Value -> Bool
+isRestr v = case v of
+    Restr _ _   -> True
+    otherwise   -> False
+
+splitPartial :: Value -> (DisjFormula,Value)
+splitPartial v = case v of
+    Partial phi ty -> (phi,ty)
+    otherwise      -> (Disj [Conj []],v)
+
+splitRestr :: Value -> (System,Value)
+splitRestr v = case v of
+    Restr sys ty -> (sys,ty)
+    otherwise    -> ([],v)
+
+getMsg :: Bool -> String -> String
+getMsg flag s = if flag then s else ""  
+
+{- State monad for type-checking and evaluation -}
+
+{-
+type Env = (Ctx,DirEnv,[String])
+
+type EnvState a = State Env a
+
+ctx :: EnvState Ctx
+ctx = do
+    (ctx,dirs,logs) <- get
+    return ctx
+
+dirs :: EnvState DirEnv
+dirs = do
+    (ctx,dirs,logs) <- get
+    return dirs
+
+addlog :: String -> EnvState ()
+addlog s = do
+    (ctx,dirs,logs) <- get
+    put (ctx,dirs,s : logs)
+-}
+

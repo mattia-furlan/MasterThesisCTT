@@ -22,7 +22,7 @@ type Err = Either String
 type ReplState = (Ctx,Term,[Ident]) -- Current context, last term checked, locked names
 
 initReplState :: ReplState
-initReplState = ([(Ident "I0",Def I I0),(Ident "I1",Def I I1)],Zero,[])
+initReplState = ([],Zero,[])
 
 runFile :: FilePath -> StateT ReplState IO Bool
 runFile f = do
@@ -64,9 +64,8 @@ checkVars ctx t = case t of
     Succ t            -> checkVars ctx t
     Ind ty b s n _    -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
     I                 -> True
-    I0                -> True
-    I1                -> True
-    Sys sys           -> all (\phi -> all (`elem` keys ctx) (vars phi)) (keys sys) && all (checkVars ctx) (elems sys)
+    Sys sys           -> all (\phi -> all (`elem` keys ctx) (vars phi)) (keys sys) &&
+                         all (checkVars ctx) (elems sys)
     Partial phi t     -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx t
     Restr sys t       -> checkVars ctx (Sys sys) && checkVars ctx t
     Comp psi x0 fam u -> checkVars ctx x0 && checkVars ctx fam && checkVars ctx u
@@ -113,7 +112,7 @@ checkSingleToplevel' :: Toplevel -> StateT ReplState IO Bool
 checkSingleToplevel' (Example t) = do
     (unlockedCtx,_,lockedNames) <- get
     let ctx = getLockedCtx lockedNames unlockedCtx
-    let ty = inferType ctx t
+        ty  = inferType ctx emptyDirEnv t
     case ty of
         Left err -> do
            liftIO $ showErr err
@@ -182,7 +181,7 @@ doRepl = do
                 Left err ->
                     printLnIO $ "could not parse term"
                 Right term -> do
-                    printLnIO $ if conv (keys ctx) (eval ctx term) (eval ctx ans) then "ok" else "no"
+                    printLnIO $ if conv (keys ctx) emptyDirEnv (eval ctx term) (eval ctx ans) then "ok" else "no"
                     --put (ctx,ans',lockedNames)
         ":clear" : idents -> do
             let ctx' = foldl removeFromCtx ctx (map Ident idents)
@@ -221,15 +220,15 @@ doRepl = do
 -- Adds a definition to the current context 
 addDef :: Ctx -> (Ident,Term,Term) -> Either ErrorString Ctx
 addDef ctx (s,t,e) = do
-    checkType ctx t Universe -- Is 't' really a type?
+    checkType ctx emptyDirEnv t Universe -- Is 't' really a type?
     let tVal = eval ctx t
-    checkType ctx e tVal -- Has 'e' type 't'?
+    checkType ctx emptyDirEnv e tVal -- Has 'e' type 't'?
     Right $ extend ctx s (Def t e)
 
 -- Adds a definition to the current context 
 addDecl :: Ctx -> (Ident,Term) -> Either ErrorString Ctx
 addDecl ctx (s,t) = do
-    checkType ctx t Universe -- Is 't' really a type?
+    checkType ctx emptyDirEnv t Universe -- Is 't' really a type?
     Right $ extend ctx s (Decl t)
 
 printCtxLn :: Ctx -> IO ()

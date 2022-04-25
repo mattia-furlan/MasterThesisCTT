@@ -15,18 +15,19 @@ myTrace s = id
 --myTrace s x = trace s x
 
 lookupType :: Ident -> Ctx -> Value
-lookupType s ctx = do
-    let mentry = lookup s ctx
-    case mentry of
-        Nothing -> error $ "[lookupType] got unknown identifier " ++ show s
-        Just entry -> case entry of
+lookupType s [] = error $ "[lookupType] got unknown identifier " ++ show s
+lookupType s ((s',entry):ctx) = if s == s' then
+        case entry of
             Decl ty     -> eval ctx ty
             Def  ty def -> eval ctx ty
+            Val _       -> lookupType s ctx
+    else
+        lookupType s ctx
 
 eval :: Ctx -> Term -> Value
-eval ctx t = {-myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx (take 4 ctx)) $-} case t of
-    Var s Nothing -> case lookup s ctx of -- `s` must be declared in `ctx`
-        Nothing -> error $ "[eval] not found var " ++ show s ++ " in ctx" --Var s mty
+eval ctx t = myTrace ("[eval] " ++ show t) $ case t of
+    Var s _ -> case lookup s ctx of
+        Nothing -> error $ "[eval] not found var " ++ show s ++ " in ctx"
         Just (Val v)     -> v
         Just (Decl ty)   -> Var s (Just $ eval ctx ty)
         Just (Def ty e)  -> eval ctx e
@@ -42,70 +43,54 @@ eval ctx t = {-myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx (take 4 ctx
               step' = eval ctx step
               n'    = eval ctx n
     I  -> I
-    I0 -> I0
-    I1 -> I1
-    Sys sys       -> doSystem (evalSystem ctx sys)
-    Partial phi t -> doPartial (evalFormula ctx phi) (eval ctx t)
-    Restr sys t   -> Restr (evalSystem ctx sys) (eval ctx t)
+    Sys sys       -> Sys $ evalSystem ctx sys
+    Partial phi t -> foldPartial (evalDisjFormula ctx phi) (eval ctx t)
+    Restr sys t   -> foldRestr (evalSystem ctx sys) (eval ctx t)
+    otherwise     -> error $ "[eval] got " ++ show t
 
-toValue :: Interval -> Value
-toValue IZero = I0
-toValue IOne  = I1
-toValue (IVar s) = Var s (Just I)
+evalConjFormula :: Ctx -> ConjFormula -> ConjFormula
+evalConjFormula ctx conj = foldr substConj conj bindings
+    where
+        bindings' = filter (\(s,v) -> s `elem` (vars conj)) (getBindings ctx)
+        bindings  = {-myTrace ("[@@] ctx = " ++ showCtx ctx ++ ", conj = " ++ show conj ++ ", bindings = " ++ show bindings') $ -} map (\case (s,Var s' _) -> (s,s')) bindings'
 
-toInterval :: Value -> Interval
-toInterval I0 = IZero
-toInterval I1 = IOne
-toInterval (Var s _) = IVar s
+evalDisjFormula :: Ctx -> DisjFormula -> DisjFormula
+evalDisjFormula ctx (Disj df) = Disj $ map (evalConjFormula ctx) df
 
-evalFormula :: Ctx -> Formula -> Formula
-evalFormula ctx ff = foldl singleSubst ff substs
-    where names  = vars ff
-          substs = concatMap (\case (s,Val v) | s `elem` names -> [(s,toInterval v)] ;
-                                    otherwise -> []) ctx
+foldRestr :: System -> Value -> Value
+foldRestr sys v = (uncurry Restr) $ foldRestr' sys v
+    where
+        foldRestr' :: System -> Value -> (System,Value)
+        foldRestr' sys v = case v of
+            Restr sys' v' -> foldRestr' (sys ++ sys') v'
+            otherwise     -> (sys,v)
+
+foldPartial :: DisjFormula -> Value -> Value
+foldPartial disj v = (uncurry Partial) $ foldPartial' disj v
+    where
+        foldPartial' :: DisjFormula -> Value -> (DisjFormula,Value)
+        foldPartial' disj v = case v of
+            Partial disj' v' -> foldPartial' (dnf disj' disj) v'
+            otherwise        -> (disj,v)
+        dnf :: DisjFormula -> DisjFormula -> DisjFormula
+        dnf (Disj df1) (Disj df2) = Disj $
+            [cf1 `meet` cf2 | cf1 <- df1, cf2 <- df2]  
 
 evalSystem :: Ctx -> System -> System
-evalSystem ctx sys = filter (\(phi,_) -> phi /= FFalse) $
-    map (\(phi,t) -> (evalFormula ctx phi, eval ctx t)) sys
+evalSystem ctx sys = map (\(phi,t) -> (evalConjFormula ctx phi, eval ctx t)) sys
 
---Applies substitutions to already formed values (needed when calling `conv`)
-simplifyValue :: DirEnv -> Value -> Value
-simplifyValue dirs (Var s mty) = case lookupDir s dirs of
-    Nothing -> Var s mty
-    Just i  -> toValue i
-simplifyValue dirs (Sys sys) = doSystem $ map (\(phi,v) -> (subst dirs phi,v)) sys
-simplifyValue dirs (Restr sys ty) = Restr simplsys ty
-    where simplsys = filter (\(phi,_) -> phi /= FFalse) sys'
-          sys' = map (\(phi,v) -> (subst dirs phi,v)) sys
-simplifyValue dirs (App neutral arg nty) = neutral @@ (simplifyValue dirs arg)
-simplifyValue dirs v = v
+isThatVar :: Value -> Ident -> Bool
+isThatVar (Var s' Nothing) s = s == s'
+isThatVar _ _          = False
 
 -- Evaluates a closure
 doApply :: Value -> Value -> Value
-doApply fun@(Closure s t e ctx) arg = 
-    let ctx' = if s == Ident "" then ctx
-               else extend (extend ctx s (Decl t)) s (Val arg)
-    in eval ctx' e  -- I don't need to add `t` to `ctx` (?)
-doApply neutral arg = neutral @@ arg -- e.g. reduce `p0` to `a` if `p : Path A a b`
-
-{-
-doApply :: Value -> Value -> Value
-doApply fun@(Closure s tVal e (ctx,dirs)) arg = myTrace ("[doApply] fun = " ++ show fun ++ ", arg = " ++ show arg) $ case tVal of
-    I -> case arg of
-        Var s' _ -> eval (extend ctx s (Decl I)) (addISubst dirs s s') e
-        _        -> eval (extend ctx s (Decl I)) (addConj dirs [(s,toInterval arg)]) e
-    _ -> let ctx' = if s == Ident "" then ctx else (extend (extend ctx s (VDecl tVal)) s (Val arg))
-        in eval ctx' dirs e  -- I don't need to add `t` to `ctx` (?)
-doApply neutral arg = neutral @@ arg -- e.g. reduce `p0` to `a` if `p : Path A a b`
--}
-
-(@@) :: Value -> Value -> Value
-neutral @@ arg = myTrace ("[@@] " ++ show neutral ++ " @@ " ++ show arg) $
-    let nty = getNeutralType neutral
-        ty  = doApply nty arg
-    in case ty of
-            Restr [(FTrue,u)] _ -> u
-            otherwise           -> App neutral arg (Just ty)
+doApply fun@(Closure s t e ctx) arg =
+    let ctx' = if s == Ident "" || isThatVar arg s then ctx
+               else extend ctx s (Val arg)
+    in eval ctx' e
+doApply (Restr sys fun) arg = doApply fun arg
+doApply neutral arg = App neutral arg (Just $ doApply (getNeutralType neutral) arg)
 
 -- Evaluates nat-induction
 doInd :: Value -> Value -> Value -> Value -> Value
@@ -117,38 +102,38 @@ doInd ty base step n = case n of
             prev = doInd ty base step n'
     otherwise -> Ind ty base step n (Just $ doApply ty n) --neutral value
 
-doSystem :: System -> Value
-doSystem sys = case lookup FTrue sys of
-    Nothing -> Sys sys
-    Just v  -> v
-
-doPartial :: Formula -> Value -> Value
-doPartial ff v = case ff of
-    FTrue -> v
-    _     -> Partial ff v
+isNeutral :: Value -> Bool
+isNeutral v = case v of
+    Var _ _       -> True
+    App _ _ _     -> True
+    Ind _ _ _ _ _ -> True
+    otherwise     -> False
 
 getNeutralType :: Value -> Value
 getNeutralType v | isNeutral v = case v of
     Var _       (Just ty) -> ty
     App _ _     (Just ty) -> ty
     Ind _ _ _ _ (Just ty) -> ty
-    otherwise -> error $ "[getNeutralType] got neutral term '" ++ show v ++ "'"
+    otherwise -> error $ "[getNeutralType] got neutral term " ++ show v
+getNeutralType v = error $ "[getNeutralType] got non-neutral term " ++ show v
 
 readBack :: [Ident] -> Value -> Term
-readBack used (App fun arg _) = App (readBack used fun) (readBack used arg) Nothing
-readBack used (Succ v) = Succ (readBack used v)
-readBack used (Sys sys) = Sys (mapElems (readBack used) sys)
-readBack used (Partial phi ty) = Partial phi (readBack used ty)
-readBack used (Restr sys ty) = Restr (mapElems (readBack used) sys) (readBack used ty)
-readBack used (Ind ty b e n _) = Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n) Nothing
-readBack used fun@(Closure s t e ctx) = let
+readBack used v = case v of
+    App fun arg _ -> App (readBack used fun) (readBack used arg) Nothing
+    Succ v -> Succ (readBack used v)
+    Sys sys -> Sys (mapElems (readBack used) sys)
+    Partial phi ty -> Partial phi (readBack used ty)
+    Restr sys ty -> Restr (mapElems (readBack used) sys) (readBack used ty)
+    Ind ty b e n _ -> Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n) Nothing
+    fun@(Closure s t e ctx) -> let
         used' = used ++ keys ctx
         s'    = newVar used' s
-        t'    = t -- ? -- readBack (s' : used') tVal
-        eVal  = doApply fun (Var s' Nothing)
+        t'    = readBack used (eval ctx t)
+        fun'  = Closure s t e (extend ctx s' (Decl t))
+        eVal  = doApply fun' (Var s' (Just $ eval ctx t))
         e'    = readBack (s' : used') eVal
         in Abst s' t' e'
-readBack used v = v
+    otherwise -> v
 
 
 normalize :: Ctx -> Term -> Term
@@ -180,7 +165,7 @@ headRed ctx t = case t of
 {- Printing utilities (should be in AbsCTT but these need 'readBack') -}
 
 instance Show Term where
-    show t = printTerm' 0 (readBack [] t)
+    show t = printTerm' 0 (readBack (vars t) t)
 
 printTerm' :: Int -> Term -> String
 printTerm' i t = case t of
@@ -195,7 +180,7 @@ printTerm' i t = case t of
               next = case e of
                 Abst _ _ _ -> 0
                 otherwise  -> 0 --i+1
-    App fun arg mty -> par1 ++ printTerm' (i+1) inner ++ " " ++ intercalate " " printedArgs ++ par2
+    App fun arg mty -> par1 ++ printTerm' (i+1) inner ++ " " ++ intercalate " " printedArgs ++ par2 -- ++ case mty of Nothing -> " :?" ; Just ty -> " :" ++ show ty
         where (inner,args) = collectApps (App fun arg mty) []
               printedArgs  = map (printTerm' (i+1)) args
     Nat          -> "N"
@@ -206,8 +191,6 @@ printTerm' i t = case t of
     Ind ty b s n _ -> par1 ++ "ind-N " ++ (printTerm' (i+1) ty) ++ " " ++ (printTerm' (i+1) b) ++ " "
          ++ (printTerm' (i+1) s) ++ " " ++ (printTerm' (i+1) n) ++ par2
     I            -> "I"
-    I0           -> "I0"
-    I1           -> "I1"
     Sys sys      -> showSystem sys
     Partial phi t-> "[" ++ show phi ++ "]" ++ printTerm' 0 t
     Restr sys t  -> showSystem sys ++ printTerm' 0 t
