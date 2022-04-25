@@ -12,11 +12,8 @@
 -- system : [i:I]N = [i:I][i = i -> 0] ;
 
 
-
-
-
 Path : [A : U] A -> A -> U =
-	[A : U][a0 : A][a1 : A][i : I] [(i = 0) -> a0, (i = 1) -> a1] A ;
+    [A : U][a0 : A][a1 : A][i : I] [(i = 0) -> a0, (i = 1) -> a1] A ;
 
 refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
 
@@ -24,24 +21,45 @@ A : U ;
 a : A ;
 b : A ;
 c : A ;
+d : A ;
 p : Path A a b ;
 q : Path A b c ;
 
 
 --j : I ;
 
-u : [j : I][i : I][j = 0 \/ i = 0 \/ i = 1]A = [j : I][i : I][(j = 0) -> p i, (i = 0) -> a, (i = 1) -> q j] ; 
+u : [j : I][i : I][j = 0 \/ i = 0 \/ i = 1]A =
+    [j : I][i : I][(j = 0) -> p i, (i = 0) -> a, (i = 1) -> q j] ; 
 
 u0 : [i : I][i = 0]A = [i : I][(i = 0) -> a] ;
 
 P : A -> U ;
-a' : P a ;
-test : P (p I0) = a' ;
-
---i : I ;
---k : I ;
-
+Pa : P a ;
+Pb : P b ; 
+--test : P (p I0) = a' ;
 
 s1 : [i:I][j:I][i = 0 /\ j = 0 \/ i = 1 /\ j = 1]N = [i:I][j:I][i = 0 /\ j = 0 -> 0, i = 1 /\ j = 1 -> S 0] ;
 
---s2 : [i:I][j:I][k:I][i = 0 /\ j = 0 \/ i = 1 /\ k = 0]N = [i:I][j:I][k:I][i = 0 /\ j = 0 -> 0, i = 1 /\ k = 0 -> S 0] ;
+s2 : [i:I][j:I][k:I][i = 0 /\ j = 0 \/ i = 1 /\ k = 0]N = [i:I][j:I][k:I][i = 0 /\ j = 0 -> 0, i = 1 /\ k = 0 -> S 0] ;
+
+
+p' : Path A a b ;
+fill : Path (Path A a b) p p' ;
+
+ss : [i:I][j:I][i = 0 \/ i = 1]A = [i:I][j:I][i = 0 -> fill i j, i = 1 -> c] ;
+ss' : [i:I][j:I][i = 0 \/ i = 1]A = [i:I][j:I][i = 0 -> fill j i, i = 1 -> b] ;
+
+
+{-works : [i:I][j:I][j = 0 \/ j = 1 \/ i = 0][i = 0 \/ i = 1]A = [i:I][j:I][
+     i = 0 -> [i = 0 -> a],
+     j = 0 -> ss i j,
+     j = 1 -> ss' i j
+    ] ;-}
+
+ut : [i:I][i = 0 -> a, i = 1 -> b]A ;
+
+test : [i:I][j:I][i = 0 \/ (i = 1 /\ j = 0) \/ (i = 1 /\ j = 1)]A = [i:I][j:I][
+     i = 0 -> ut i,
+     i = 1 /\ j = 0 -> b,
+     i = 1 /\ j = 1 -> c
+    ] ;
