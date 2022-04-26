@@ -3,9 +3,8 @@
 module TypeChecker where
 
 import Data.Either
-import Data.List (intercalate)
-import Data.Map (Map(..))
-import qualified Data.Map as Map
+import Data.List (intercalate,find)
+import Data.Maybe (fromJust)
 import Control.Monad
 
 import Ident
@@ -15,19 +14,23 @@ import Eval
 
 
 inferType :: Ctx -> DirEnv -> Term -> Either ErrorString Value
-inferType ctx dirs t = myTrace ("[inferType]>> t = " ++ show t ++ ", ctx = " ++ showCtx ctx) $ case t of
-    Var s Nothing -> Right $ lookupType s ctx
+inferType ctx dirs t = myTrace ("[inferType]=> t = " ++ show t ++ ", ctx = ..."{- ++ showCtx ctx-}) $ case t of
+    Var s -> Right $ lookupType s ctx
     Universe -> Right Universe
-    App fun arg Nothing -> do
+    App fun arg -> do
         funTy <- inferType ctx dirs fun
-        let funTy' = case funTy of --TODO new rules with restriction function types?
-                Restr _ v -> v
-                otherwise -> funTy
+
+        let (funTy',box) = case funTy of
+                Restr sys v -> (v,makeRestr sys)
+                otherwise   -> (funTy,curry snd)
+            makeRestr :: System -> Value -> Value -> Value
+            makeRestr sys val ty = Restr (map (\(psi,g) -> (psi,doApply g val)) sys) ty
+
         case funTy' of
             c@(Closure s t e ctx1) -> do
                 checkType ctx dirs arg (eval ctx1 t)
                 let argVal = eval ctx arg
-                return $ doApply c argVal
+                return $ box argVal (doApply c argVal)
             otherwise -> Left $
                 "term '" ++ show fun ++ "' has type '" ++ show funTy ++ "' , which is not a product"
     Nat -> Right Universe
@@ -35,7 +38,7 @@ inferType ctx dirs t = myTrace ("[inferType]>> t = " ++ show t ++ ", ctx = " ++ 
     Succ n -> do
         checkType ctx dirs n Nat
         Right Nat 
-    Ind ty base step n Nothing -> do
+    Ind ty base step n -> do
         nTyVal <- inferType ctx dirs n
         isNat n nTyVal
         checkType ctx dirs ty (eval emptyCtx (Abst (Ident "") Nat Universe)) -- N -> U
@@ -45,12 +48,12 @@ inferType ctx dirs t = myTrace ("[inferType]>> t = " ++ show t ++ ", ctx = " ++ 
         checkType ctx dirs base tyVal0
 
         let varname = newVar (keys ctx) (Ident "n")
-            var     = Var varname Nothing
+            var     = Var varname
             ctx'    = extend ctx varname (Decl Nat)
         checkType ctx dirs step (eval ctx'
             (Abst varname Nat
-                (Abst (Ident "") (App ty var Nothing)
-                    (App ty (Succ var) Nothing))
+                (Abst (Ident "") (App ty var)
+                    (App ty (Succ var)))
             )) -- (n : nat) ty n -> ty (suc n)
         let nVal = eval ctx n
         return $ doApply tyVal nVal
@@ -76,7 +79,7 @@ checkTypePartialDisj (Disj df) ctx dirs e v = myTrace ("[checkTypePartialDisj] d
     mapM_ (\conj -> checkTypePartialConj conj ctx dirs e v) df
 
 checkType :: Ctx -> DirEnv -> Term -> Value -> Either ErrorString ()
-checkType ctx dirs e v = myTrace ("[checkType]>> e = " ++ show e ++ ", v = " ++ show v ++ ", ctx = " ++ showCtx ctx ++ ", dirs = " ++ show dirs) $ case (e,v) of
+checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ show v ++ ", ctx = ..." {-++ showCtx ctx-} ++ ", dirs = " ++ show dirs) $ case (e,v) of
     (Abst s t e,Universe) -> do
         checkType ctx dirs t Universe
         checkType (extend ctx s (Decl t)) dirs e Universe
@@ -89,13 +92,13 @@ checkType ctx dirs e v = myTrace ("[checkType]>> e = " ++ show e ++ ", v = " ++ 
                 "' (while checking term '" ++ show (Abst s t e) ++ "' against type '" ++ show v ++ "')"-}
         
         let var   = newVar (keys ctx1) s
-            e1Val = doApply v (Var var (Just t1Val))
+            e1Val = doApply v (Neutral (Var var) t1Val)
         when (e1Val == I) $
             Left $ "I cannot appear as codomain in products"
         let ctx' = if s == var then
                 extend ctx s (Decl t)
             else
-                extend (extend ctx s (Decl t)) s (Val (Var var (Just tVal)))
+                extend (extend ctx s (Decl t)) s (Val (Neutral (Var var) tVal))
         checkType ctx' dirs e e1Val
     (e,Restr sys ty) -> do
         let eVal = eval ctx e
@@ -139,7 +142,7 @@ checkType ctx dirs e v = myTrace ("[checkType]>> e = " ++ show e ++ ", v = " ++ 
             let (sys,ity) = splitRestr ty
                 (phi,cty) = splitPartial v
                 psi = getSystemFormula sys
-            myTrace ("[Partial] phi = " ++ show phi ++ ", psi = " ++ show psi) $ unless (phi `impDisj` psi) $
+            myTrace ("[Partial] phi = " ++ show phi ++ ", psi = " ++ show psi) $ unless (impDisj dirs phi psi) $
                 Left $ show phi ++ " does not imply " ++ show psi
             unless (conv (keys ctx) dirs ity cty) $
                 Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
@@ -148,7 +151,7 @@ checkType ctx dirs e v = myTrace ("[checkType]>> e = " ++ show e ++ ", v = " ++ 
             let (psi,ity) = splitPartial ty
                 (phi,cty) = splitPartial v
             --let msg = getMsg (not $ phi `impDisj` psi) $ ": " ++ show phi ++ " does not imply " ++ show psi
-            unless (conv (keys ctx) dirs ity cty && phi `impDisj` psi) $
+            unless (conv (keys ctx) dirs ity cty && impDisj dirs phi psi) $
                 Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
                     ++ "' of type '" ++ show ty ++ "' instead"-- ++ msg
         else if isRestr ty || isRestr v then do
@@ -160,7 +163,7 @@ checkType ctx dirs e v = myTrace ("[checkType]>> e = " ++ show e ++ ", v = " ++ 
             --    Left $ show phi ++ " does not imply " ++ show psi
             --unless (convPartialDisj (keys ctx) phi dirs (Sys sys) (Sys csys)) $
             --    Left $ "incompatible systems" 
-            unless (conv (keys ctx) dirs ity cty && phi `impDisj` psi &&
+            unless (conv (keys ctx) dirs ity cty && impDisj dirs phi psi &&
                 convPartialDisj (keys ctx) phi dirs (Sys sys) (Sys csys)) $
                 Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
                     ++ "' of type '" ++ show ty ++ "' instead"
@@ -190,16 +193,8 @@ convPartialDisj :: [Ident] -> DisjFormula -> DirEnv -> Value -> Value -> Bool
 convPartialDisj used (Disj df) dirs v1 v2 = myTrace ("[convPartialDisj] disj = " ++ show (Disj df) ++ ", v1 = " ++ show v1 ++ ", v2 = " ++ show v2) $
     all (\conj -> convPartialConj used conj dirs v1 v2) df
 
---instance Convertible DisjFormula where
---    conv _ _ df1 df2 = df1 `impDisj` df2 && df2 `impDisj` df1
-convFormulas :: DisjFormula -> DisjFormula -> Bool
-convFormulas disj1 disj2 = disj1 `impDisj` disj2 && disj2 `impDisj` disj1
-
 instance Convertible DisjFormula where
-    conv _ dirs disj1 disj2 =
-        convFormulas disj1 disj2
-        {-convFormulas (simplifyDisjFormula dirs disj1)
-                     (simplifyDisjFormula dirs disj2)-}
+    conv _ dirs disj1 disj2 = eqFormulas dirs disj1 disj2
 
 instance Convertible Value where
     conv used dirs v1 v2 = myTrace ("[conv] v1 = " ++ show v1 ++ ", v2 = " ++ show v2 ++ ", dirs = " ++ show dirs) $
@@ -207,7 +202,7 @@ instance Convertible Value where
             (Closure s1 t1 e1 ctx1,Closure s2 t2 e2 ctx2) -> let
                 var = newVar (used ++ keys ctx2) s1
                 getNew ctx s t tV = let ctx' = extend ctx s (Decl t) in
-                    if var == s1 then ctx' else extend ctx' s (Val (Var var (Just tV)))
+                    if var == s1 then ctx' else extend ctx' s (Val $ Neutral (Var var) tV)
                 t1V = eval ctx1 t1
                 t2V = eval ctx2 t2
                 e1' = eval (getNew ctx1 s1 t1 t1V) e1
@@ -220,33 +215,29 @@ instance Convertible Value where
             (Succ n1,Succ n2)   -> conv used dirs n1 n2
             {- Cubical -}
             (I,I)               -> True
-            (Sys sys1,Sys sys2) -> 
-                if isSimpl dirs v1 || isSimpl dirs v2 then
-                    conv used dirs (simplifyValue dirs v1) (simplifyValue dirs v2)
-                else
-                    conv used dirs sys1 sys2
-            (Sys _,_) ->
-                isSimpl dirs v1 && conv used dirs (simplifyValue dirs v1) v2
-            (_,Sys _) ->
-                isSimpl dirs v2 && conv used dirs v1 (simplifyValue dirs v2)
+            (Sys sys1,v2) | isSimplSys dirs sys1 ->
+                conv used dirs (simplifySys dirs sys1) v2
+            (v1,Sys sys2) | isSimplSys dirs sys2 ->
+                conv used dirs v1 (simplifySys dirs sys2)
+            (Sys sys1,Sys sys2) -> conv used dirs sys1 sys2
             (Partial phi1 v1,Partial phi2 v2) -> conv used dirs phi1 phi2 &&
                 conv used dirs v1 v2
             (Restr sys1 t1,Restr sys2 t2) -> conv used dirs sys1 sys2 &&
                 conv used dirs t1 t2
             {- Neutrals -}
-            (Var s1 _,Var s2 _) -> s1 == s2
-            (App fun1 arg1 _,App fun2 arg2 _) ->
-                if isSimpl dirs v1 || isSimpl dirs v2 then
-                    conv used dirs (simplifyValue dirs v1) (simplifyValue dirs v2)
-                else
-                    conv used dirs fun1 fun2 && conv used dirs arg1 arg2
-            (App _ _ _,_) ->
-                isSimpl dirs v1 && conv used dirs (simplifyValue dirs v1) v2
-            (_,App _ _ _) ->
-                isSimpl dirs v2 && conv used dirs v1 (simplifyValue dirs v2)
-            (Ind ty1 b1 s1 n1 _,Ind ty2 b2 s2 n2 _) ->
+            (Var s1,Var s2) -> s1 == s2
+            (App f1 a1,App f2 a2) -> conv used dirs f1 f2 && conv used dirs a1 a2 
+            (Ind ty1 b1 s1 n1,Ind ty2 b2 s2 n2) ->
                 conv used dirs ty1 ty2 && conv used dirs b1 b2 &&
                 conv used dirs s1  s2  && conv used dirs n1 n2
+            
+            (Neutral _ ty1,v2) | isSimpl dirs ty1 ->
+                    conv used dirs (simplifyValue dirs ty1) v2
+            (v1,Neutral _ ty2) | isSimpl dirs ty2 ->
+                    conv used dirs v1 (simplifyValue dirs ty2)
+            (Neutral (Var x1) I,Neutral (Var x2) I) -> 
+                dirs `makesTrueAtomic` (Diag x1 x2)
+            (Neutral v1 _,Neutral v2 _) -> conv used dirs v1 v2
             otherwise             -> False
 
 instance Convertible System where
@@ -257,21 +248,17 @@ instance Convertible System where
                         conj1 <- keys sys1, conj2 <- keys sys2]
 
 isSimpl :: DirEnv -> Value -> Bool
-isSimpl dirs v = case v of
-    App nfun arg (Just ty) -> case ty of
-        Restr sys _ -> isSimpl dirs (Sys sys)
-        otherwise   -> False
-    Sys sys -> any (\(cf,_) -> dirs `makesTrue` cf) sys
+isSimpl dirs ty = case ty of
+    Restr sys _ -> isSimplSys dirs sys
+    otherwise   -> False
 
 simplifyValue :: DirEnv -> Value -> Value
-simplifyValue dirs v = myTrace ("[simplifyValue] v = " ++ show v ++ ", dirs = " ++ show dirs) $ case v of
-    App nfun arg (Just ty) -> case ty of
-        Restr sys _ -> case simplifyValue dirs (Sys sys) of
-            Sys _ -> v
-            u     -> u
-        otherwise   -> v
-    Sys sys -> let found = filter (\(cf,_) -> dirs `makesTrue` cf) sys
-        in case found of
-            [] -> Sys sys
-            _  -> snd $ head found
+simplifyValue dirs (Restr sys _) = simplifySys dirs sys
+
+isSimplSys :: DirEnv -> System -> Bool
+isSimplSys dirs sys = any (\(cf,_) -> dirs `makesTrueConj` cf) sys
+
+simplifySys :: DirEnv -> System -> Value
+simplifySys dirs sys = snd . fromJust $
+    find (\(cf,_) -> dirs `makesTrueConj` cf) sys
 

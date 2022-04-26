@@ -66,16 +66,16 @@ Term : Term1 { $1 }
 
 Term1 :: { CoreCTT.Term }
 Term1 : Term2 { $1 }
-      | Term1 Term2 { CoreCTT.App $1 $2 Nothing }
+      | Term1 Term2 { CoreCTT.App $1 $2 }
 
 Term2 :: { CoreCTT.Term }
 Term2 : Term3 { $1 }
-      | Ident { CoreCTT.Var $1 Nothing }
+      | Ident { CoreCTT.Var $1 }
       | 'U' { CoreCTT.Universe }
       | 'N' { CoreCTT.Nat }
       | '0' { CoreCTT.Zero }
       | 'S' Term2 { CoreCTT.Succ $2 }
-      | 'ind' Term2 Term2 Term2 Term2 { CoreCTT.Ind $2 $3 $4 $5 Nothing }
+      | 'ind' Term2 Term2 Term2 Term2 { CoreCTT.Ind $2 $3 $4 $5 }
       | 'comp' DisjFormula Term2 Term2 Term2 { CoreCTT.Comp $2 $3 $4 $5 }
       | 'I' { CoreCTT.I }
 

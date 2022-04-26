@@ -55,14 +55,14 @@ checkProgram (Program (toplevel : decls)) = do
 --Checks if a term contains undeclared variables (True = OK)
 checkVars :: Ctx -> Term -> Bool
 checkVars ctx t = case t of
-    Var s _           -> isJust $ lookup s ctx
+    Var s             -> isJust $ lookup s ctx
     Universe          -> True
     Abst s t e        -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
-    App fun arg _     -> checkVars ctx fun && checkVars ctx arg
+    App fun arg       -> checkVars ctx fun && checkVars ctx arg
     Nat               -> True
     Zero              -> True
     Succ t            -> checkVars ctx t
-    Ind ty b s n _    -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
+    Ind ty b s n      -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
     I                 -> True
     Sys sys           -> all (\phi -> all (`elem` keys ctx) (vars phi)) (keys sys) &&
                          all (checkVars ctx) (elems sys)

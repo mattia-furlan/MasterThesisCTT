@@ -14,22 +14,23 @@ import Interval
 {- Syntax (terms/values) -}
 
 data Term
-    = Var Ident (Maybe Value)                --Neutral
+    = Var Ident
     | Universe
     | Abst Ident Term Term
-    | App Term Term (Maybe Value)            --Neutral
+    | App Term Term
     | Nat
     | Zero
     | Succ Term
-    | Ind Term Term Term Term (Maybe Value)  --Neutral
+    | Ind Term Term Term Term
     {- Cubical -}
     | I
     | Sys System
     | Partial DisjFormula Term
     | Restr System Term
     | Comp DisjFormula Term Term Term --TODO
-    {- Closure (values only) -}
-    | Closure Ident Term Term Ctx 
+    {-  For values only: -}
+    | Closure Ident Term Term Ctx  -- ident,type,term,context
+    | Neutral Value Value          -- value,type
   deriving (Eq, Ord)
 
 type Value = Term
@@ -54,8 +55,8 @@ newVar used x = if x `elem` used then newVar used (Ident $ show x ++ "'") else x
 
 collectApps :: Term -> [Term] -> (Term,[Term])
 collectApps t apps = case t of
-    App t1 t2' _ -> collectApps t1 (t2' : apps)
-    otherwise    -> (t,apps)
+    App t1 t2' -> collectApps t1 (t2' : apps)
+    otherwise  -> (t,apps)
 
 collectAbsts :: Term -> [(Ident,Term)] -> (Term,[(Ident,Term)])
 collectAbsts t absts = case t of
@@ -78,35 +79,37 @@ instance SyntacticObject System where
 
 instance SyntacticObject Term where
     vars t = case t of
-        Var s _           -> [s]
+        Var s             -> [s]
         Universe          -> []
         Abst s t e        -> vars t ++ vars e
-        App fun arg _     -> vars fun ++ vars arg
+        App fun arg       -> vars fun ++ vars arg
         Nat               -> []
         Zero              -> []
         Succ t            -> vars t
-        Ind ty b s n _    -> vars ty ++ vars b ++ vars s ++ vars n
+        Ind ty b s n      -> vars ty ++ vars b ++ vars s ++ vars n
         I                 -> []
         Sys sys           -> vars sys
         Partial phi t     -> vars phi ++ vars t
         Restr sys t       -> vars sys ++ vars t
         Comp psi x0 fam u -> vars psi ++ vars x0 ++ vars fam ++ vars u
         Closure s t e ctx -> [s] ++ keys ctx
+        Neutral v _       -> vars t
     freeVars t = case t of
-        Var s _           -> [s]
+        Var s             -> [s]
         Universe          -> []
         Abst s t e        -> freeVars t ++ filter (/= s) (freeVars e)
-        App fun arg _     -> freeVars fun ++ freeVars arg
+        App fun arg       -> freeVars fun ++ freeVars arg
         Nat               -> []
         Zero              -> []
         Succ t            -> freeVars t
-        Ind ty b s n _    -> freeVars ty ++ freeVars b ++ freeVars s ++ freeVars n
+        Ind ty b s n      -> freeVars ty ++ freeVars b ++ freeVars s ++ freeVars n
         I                 -> []
         Sys sys           -> freeVars sys
         Partial phi t     -> freeVars phi ++ freeVars t
         Restr sys t       -> freeVars sys ++ freeVars t
         Comp psi x0 fam u -> freeVars psi ++ freeVars x0 ++ freeVars fam ++ freeVars u
         Closure s t e ctx -> keys ctx
+        Neutral v _       -> freeVars v
 
 instance SyntacticObject AtomicFormula where
     vars af = case af of
@@ -125,16 +128,16 @@ instance SyntacticObject DisjFormula where
 
 checkTermShadowing :: [Ident] -> Term -> Bool
 checkTermShadowing vars t = case t of
-    Var s _             -> True
+    Var s               -> True
     Universe            -> True
     Abst (Ident "") t e -> checkTermShadowing vars t && checkTermShadowing vars e
     Abst s t e          -> s `notElem` vars &&
         checkTermShadowing (s : vars) t && checkTermShadowing (s : vars) e 
-    App fun arg _       -> checkTermShadowing vars fun && checkTermShadowing vars arg
+    App fun arg         -> checkTermShadowing vars fun && checkTermShadowing vars arg
     Nat                 -> True
     Zero                -> True
     Succ n              -> checkTermShadowing vars n
-    Ind ty b s n _      -> checkTermShadowing vars ty && checkTermShadowing vars b &&
+    Ind ty b s n        -> checkTermShadowing vars ty && checkTermShadowing vars b &&
         checkTermShadowing vars s && checkTermShadowing vars n
     I                   -> True
     Sys sys             -> all (checkTermShadowing vars) (elems sys)
