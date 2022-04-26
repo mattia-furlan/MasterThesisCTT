@@ -47,7 +47,7 @@ p' : Path A a b ;
 fill : Path (Path A a b) p p' ;
 
 ss : [i:I][j:I][i = 0 \/ i = 1]A = [i:I][j:I][i = 0 -> fill i j, i = 1 -> c] ;
-ss' : [i:I][j:I][i = 0 \/ i = 1]A = [i:I][j:I][i = 0 -> fill j i, i = 1 -> b] ;
+--ss' : [i:I][j:I][i = 0 \/ i = 1]A = [i:I][j:I][i = 0 -> fill j i, i = 1 -> b] ;
 
 
 {-works : [i:I][j:I][j = 0 \/ j = 1 \/ i = 0][i = 0 \/ i = 1]A = [i:I][j:I][

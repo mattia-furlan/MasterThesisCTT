@@ -11,6 +11,7 @@ plus : N -> N -> N = [m : N][n : N] ind idN m ([n':N][mPlusn:N]S mPlusn) n ;
 
 mult : N -> N -> N = [m : N][n : N] ind idN 0 ([n':N][mTimesn:N] plus mTimesn m) n ;
 
+{-
 exp : N -> N -> N = [m : N][n : N] ind idN (S 0) ([n':N][mExpn:N] mult mExpn m) n ;
 
 tetra : N -> N -> N = [m : N][n : N] ind idN (S 0) ([n':N][mTetran:N] exp m mTetran) n ;
@@ -18,10 +19,11 @@ tetra : N -> N -> N = [m : N][n : N] ind idN (S 0) ([n':N][mTetran:N] exp m mTet
 succ (S S S S 0) ;
 
 plus (S S S 0) (S S S 0) ;
+-}
 
-mult (S S 0) (S S S S 0) ;
+mult (S 0) (S 0) ;
 
-exp (S S S 0) (S S S 0) ;
+--exp (S S S 0) (S S S 0) ;
 
 {- Some logic -}
 

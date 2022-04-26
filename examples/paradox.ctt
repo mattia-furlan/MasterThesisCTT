@@ -12,12 +12,6 @@ not : U -> U = [X : U] X -> abs ;
 A : U = [X : U] (T X -> X) -> X ;
 
 
--- T X = Pow (Pow X) = Pow (X -> U) = (X -> U) -> U
--- T A = Pow (Pow A) = (A -> U) -> U = 
--- T A = T ([X : U] (T X -> X) -> X) = Pow (Pow ([X : U] (T X -> X) -> X))
---     = Pow (([X : U] (T X -> X) -> X)) -> U) = ([X : U] (T X -> X) -> X) -> U -> U
---     = (([X : U] ((((X -> U) -> U) -> X) -> X)) -> U) -> U
-
 intro : T A -> A = [t : T A][X : U][f : T X -> X] f ([g : Pow X] t ([z : A] g (z X f))) ;
 
 match : A -> T A = [z : A]z (T A) ([t : T (T A)][g : Pow A] t ([x : T A] g (intro x))) ;
@@ -32,7 +26,6 @@ cDelta : Pow A -> Pow A =  [p : Pow A][z:A]p (delta z) ;
 a0 : A = intro Q ;
 
 lem1 : [p : Pow A]Q p -> p a0 = [p : Pow A][h : Q p]h a0 ([x : A]h (delta x)) ;
-
 
 Ed : Pow A = [z:A][p:Pow A]match z p -> p (delta z) ;
 
