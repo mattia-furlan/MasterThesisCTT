@@ -24,7 +24,7 @@ inferType ctx dirs t = myTrace ("[inferType]=> t = " ++ show t ++ ", ctx = ..."{
                 Restr sys v -> (v,makeRestr sys)
                 otherwise   -> (funTy,curry snd)
             makeRestr :: System -> Value -> Value -> Value
-            makeRestr sys val ty = Restr (map (\(psi,g) -> (psi,doApply g val)) sys) ty
+            makeRestr sys val ty = foldRestr (map (\(psi,g) -> (psi,doApply g val)) sys) ty
 
         case funTy' of
             c@(Closure s t e ctx1) -> do
@@ -79,7 +79,7 @@ checkTypePartialDisj (Disj df) ctx dirs e v = myTrace ("[checkTypePartialDisj] d
     mapM_ (\conj -> checkTypePartialConj conj ctx dirs e v) df
 
 checkType :: Ctx -> DirEnv -> Term -> Value -> Either ErrorString ()
-checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ show v ++ ", ctx = ..." {-++ showCtx ctx-} ++ ", dirs = " ++ show dirs) $ case (e,v) of
+checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ show v ++ ", ctx = " ++ showCtx ctx ++ ", dirs = " ++ show dirs) $ case (e,v) of
     (Abst s t e,Universe) -> do
         checkType ctx dirs t Universe
         checkType (extend ctx s (Decl t)) dirs e Universe
@@ -163,10 +163,11 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
             --    Left $ show phi ++ " does not imply " ++ show psi
             --unless (convPartialDisj (keys ctx) phi dirs (Sys sys) (Sys csys)) $
             --    Left $ "incompatible systems" 
-            unless (conv (keys ctx) dirs ity cty && impDisj dirs phi psi &&
-                convPartialDisj (keys ctx) phi dirs (Sys sys) (Sys csys)) $
-                Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
-                    ++ "' of type '" ++ show ty ++ "' instead"
+            myTrace ("sys,ity = " ++ show sys ++ " || " ++ show ity ++ ", csys,cty = " ++ show csys ++ " || " ++ show cty ++ ", phi,psi = " ++ show phi ++ " || " ++ show psi) $
+                unless (conv (keys ctx) dirs ity cty && impDisj dirs phi psi &&
+                    convPartialDisj (keys ctx) phi dirs (Sys sys) (Sys csys)) $
+                    Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
+                        ++ "' of type '" ++ show ty ++ "' instead"
         else unless (conv (keys ctx) dirs v ty) $
             Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
                 ++ "' of type '" ++ show ty ++ "' instead"
@@ -197,17 +198,15 @@ instance Convertible DisjFormula where
     conv _ dirs disj1 disj2 = eqFormulas dirs disj1 disj2
 
 instance Convertible Value where
-    conv used dirs v1 v2 = myTrace ("[conv] v1 = " ++ show v1 ++ ", v2 = " ++ show v2 ++ ", dirs = " ++ show dirs) $
+    conv used dirs v1 v2 =
         v1 == v2 || case (v1,v2) of
             (Closure s1 t1 e1 ctx1,Closure s2 t2 e2 ctx2) -> let
                 var = newVar (used ++ keys ctx2) s1
-                getNew ctx s t tV = let ctx' = extend ctx s (Decl t) in
-                    if var == s1 then ctx' else extend ctx' s (Val $ Neutral (Var var) tV)
                 t1V = eval ctx1 t1
                 t2V = eval ctx2 t2
-                e1' = eval (getNew ctx1 s1 t1 t1V) e1
-                e2' = eval (getNew ctx2 s2 t2 t2V) e2
-                in conv (var : used) dirs t1V t2V && conv (var : used) dirs e1' e2'
+                e1' = doApply v1 (Neutral (Var var) t1V)
+                e2' = doApply v2 (Neutral (Var var) t2V)
+                in conv used dirs t1V t2V && conv (var : used) dirs e1' e2'
             (Universe,Universe) -> True
             {- Naturals -}
             (Nat,Nat)           -> True

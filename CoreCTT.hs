@@ -51,7 +51,12 @@ isNumeral _ = (False,0)
 
 -- Generates a new name starting from 'x' (maybe too inefficient - TODO)
 newVar :: [Ident] -> Ident -> Ident
-newVar used x = if x `elem` used then newVar used (Ident $ show x ++ "'") else x
+newVar used x = if x == Ident "" then --TODO necessary?
+        Ident ""
+    else if x `elem` used then
+        newVar used (Ident $ show x ++ "'")
+    else
+        x
 
 collectApps :: Term -> [Term] -> (Term,[Term])
 collectApps t apps = case t of
@@ -158,6 +163,7 @@ type ErrorString = String
 
 extend :: [(k,a)] -> k -> a -> [(k,a)]
 extend al s v = (s,v) : al
+
 
 keys :: [(k,a)] -> [k]
 keys = map fst

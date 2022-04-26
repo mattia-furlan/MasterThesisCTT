@@ -11,7 +11,7 @@ import CoreCTT
 import Debug.Trace
 
 debug :: Bool
-debug = False --True
+debug = False
 
 myTrace :: String -> a -> a
 myTrace s x = if debug then trace s x else x
@@ -27,7 +27,7 @@ lookupType s ((s',entry):ctx) = if s == s' then
         lookupType s ctx
 
 eval :: Ctx -> Term -> Value
-eval ctx t = myTrace ("[eval] " ++ show t) $ case t of
+eval ctx t = myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx ctx ++ "\n\n") $ case t of
     Var s -> case lookup s ctx of
         Nothing -> error $ "[eval] not found var " ++ show s ++ " in ctx"
         Just (Val v)     -> v
@@ -81,22 +81,17 @@ foldPartial disj v = (uncurry Partial) $ foldPartial' disj v
 evalSystem :: Ctx -> System -> System
 evalSystem ctx sys = map (\(phi,t) -> (evalConjFormula ctx phi, eval ctx t)) sys
 
-isThatVar :: Value -> Ident -> Bool
-isThatVar (Var s') s = s == s'
-isThatVar _ _        = False
-
 -- Evaluates a closure
 doApply :: Value -> Value -> Value
-doApply fun@(Closure s t e ctx) arg = myTrace ("[doApply] fun, arg = " ++ show arg) $ 
-    let ctx' = if s == Ident "" || isThatVar arg s then ctx
-               else extend ctx s (Val arg)
+doApply fun@(Closure s t e ctx) arg = {-myTrace ("[doApply] fun = " ++ show fun ++ ", arg = " ++ show arg) $-} 
+    let ctx' = extend ctx s (Val arg)
     in eval ctx' e
 doApply (Restr sys fun) arg = doApply fun arg
-doApply (Neutral f fty) arg = myTrace ("[doApply] neutral = " ++ show f ++ ", arg = " ++ show arg) $Neutral (App f arg) (doApply fty arg)
+doApply (Neutral f fty) arg = {-myTrace ("[doApply] neutral = " ++ show f ++ ", arg = " ++ show arg) $-} Neutral (App f arg) (doApply fty arg)
 
 -- Evaluates nat-induction
 doInd :: Value -> Value -> Value -> Value -> Value
-doInd ty base step n = myTrace ("[doInd]") $ case n of
+doInd ty base step n = case n of
     Zero     -> myTrace ("[doInd] base case") $ base
     Succ n'  -> myTrace ("[doInd] succ case") $ doApply fun prev
         where
@@ -115,8 +110,8 @@ readBack used v = case v of
     App fun arg -> App (readBack used fun) (readBack used arg)
     Succ v -> Succ (readBack used v)
     Sys sys -> Sys (mapElems (readBack used) sys)
-    Partial phi ty -> Partial phi (readBack used ty)
-    Restr sys ty -> Restr (mapElems (readBack used) sys) (readBack used ty)
+    Partial phi ty -> foldPartial phi (readBack used ty)
+    Restr sys ty -> foldRestr (mapElems (readBack used) sys) (readBack used ty)
     Ind ty b e n -> Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n)
     fun@(Closure s t e ctx) -> let
         used' = used ++ keys ctx
@@ -188,10 +183,21 @@ printTerm' i t = case t of
     Sys sys      -> showSystem sys
     Partial phi t-> "[" ++ show phi ++ "]" ++ printTerm' 0 t
     Restr sys t  -> showSystem sys ++ printTerm' 0 t
-    Closure s tyV e ctx    -> "{" ++ show s ++ " : " ++ show tyV ++ "," ++ show e ++ {-"," ++ showCtx ctx ++-} "}"
+    Closure s tyV e ctx  -> "{" ++ show s ++ " : " ++ show tyV ++ "," ++ show e ++ {-"," ++ showCtx ctx ++-} "}"
     Neutral v t  -> "{{" ++ printTerm' 0 v ++ "}}:" ++ printTerm' (i+1) t 
     where (par1,par2) = if i == 0 then ("","") else ("(",")")
 
+{-
+isVal :: CtxEntry -> Bool
+isVal (Val _) = True
+isVal _       = False
+
+extend :: Ctx -> Ident -> CtxEntry -> Ctx
+extend ctx s e | (isVal e) = case lookup s ctx of
+    Just (Val _) -> myTrace ("[###############] duplicated " ++ showEntry (s,e) ++ " in ctx = " ++ showCtx ctx) $ if s == Ident "" then ctx else (s,e) : ctx
+    otherwise    -> if s == Ident "" then ctx else (s,e) : ctx
+extend ctx s e = if s == Ident "" then ctx else (s,e) : ctx
+-}
 
 showCtx :: Ctx -> String
 showCtx ctx = "[" ++ intercalate ", " (map showEntry (reverse ctx)) ++ "]"
