@@ -33,12 +33,16 @@ eval ctx t = myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx ctx ++ "\n\n"
         Just (Val v)     -> v
         Just (Decl ty)   -> Neutral (Var s) (eval ctx ty)
         Just (Def ty e)  -> eval ctx e
-    Universe   -> Universe
-    Abst s t e -> Closure s t e ctx
-    App e1 e2  -> doApply (eval ctx e1) (eval ctx e2)
-    Nat        -> Nat
-    Zero       -> Zero
-    Succ t     -> Succ (eval ctx t)
+    Universe    -> Universe
+    Abst s ty e -> Closure t ctx
+    App e1 e2   -> doApply (eval ctx e1) (eval ctx e2)
+    Sigma s ty e-> Closure t ctx
+    Pair t1 t2  -> Pair (eval ctx t1) (eval ctx t2)
+    Fst t       -> doFst (eval ctx t)
+    Snd t       -> doSnd (eval ctx t)
+    Nat         -> Nat
+    Zero        -> Zero
+    Succ t      -> Succ (eval ctx t)
     Ind ty base step n -> doInd ty' base' step' n'
         where ty'   = eval ctx ty
               base' = eval ctx base
@@ -81,10 +85,15 @@ foldPartial disj v = (uncurry Partial) $ foldPartial' disj v
 evalSystem :: Ctx -> System -> System
 evalSystem ctx sys = map (\(phi,t) -> (evalConjFormula ctx phi, eval ctx t)) sys
 
+extract :: Value -> (Ident -> Term -> Term -> Value,Ident,Term,Term)
+extract (Abst s t e) = (Abst,s,t,e)
+extract (Sigma s t e) = (Sigma,s,t,e)
+extract v = error $ "[extract] got " ++ show v
 -- Evaluates a closure
 doApply :: Value -> Value -> Value
-doApply fun@(Closure s t e ctx) arg = {-myTrace ("[doApply] fun = " ++ show fun ++ ", arg = " ++ show arg) $-} 
-    let ctx' = extend ctx s (Val arg)
+doApply fun@(Closure cl ctx) arg = {-myTrace ("[doApply] fun = " ++ show fun ++ ", arg = " ++ show arg) $-} 
+    let (_,s,t,e) = extract cl
+        ctx'    = extend ctx s (Val arg)
     in eval ctx' e
 doApply (Restr sys fun) arg = doApply fun arg
 doApply (Neutral f fty) arg = {-myTrace ("[doApply] neutral = " ++ show f ++ ", arg = " ++ show arg) $-} Neutral (App f arg) (doApply fty arg)
@@ -101,6 +110,19 @@ doInd ty base step n = case n of
         Neutral (Ind ty base step n) (doApply ty (Neutral n Nat)) --neutral value
     otherwise -> error $ "[doInd] got " ++ show n
 
+doFst :: Value -> Value
+doFst v = case v of
+    Pair v1 v2   -> v1
+    Neutral x (Closure (Sigma s t e) ctx) -> Neutral (Fst v) (eval ctx t)
+    otherwise -> error $ "[doFst] got " ++ show v
+
+doSnd :: Value -> Value
+doSnd v = case v of
+    Pair v1 v2   -> v2
+    Neutral x ty@(Closure (Sigma s t e) ctx) -> Neutral (Snd v) (doApply ty x)
+    otherwise -> error $ "[doSnd] got " ++ show v
+
+
 getNeutralType :: Value -> Value
 getNeutralType (Neutral _ ty) = ty
 getNeutralType v = error $ "[getNeutralType] got non-neutral term " ++ show v
@@ -109,18 +131,22 @@ readBack :: [Ident] -> Value -> Term
 readBack used v = case v of
     App fun arg -> App (readBack used fun) (readBack used arg)
     Succ v -> Succ (readBack used v)
+    Fst v -> Fst (readBack used v)
+    Snd v -> Snd (readBack used v)
+    Pair v1 v2 -> Pair (readBack used v1) (readBack used v2)
     Sys sys -> Sys (mapElems (readBack used) sys)
     Partial phi ty -> foldPartial phi (readBack used ty)
     Restr sys ty -> foldRestr (mapElems (readBack used) sys) (readBack used ty)
     Ind ty b e n -> Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n)
-    fun@(Closure s t e ctx) -> let
-        used' = used ++ keys ctx
-        s'    = newVar used' s
-        t'    = readBack used (eval ctx t)
-        fun'  = Closure s t e (extend ctx s' (Decl t))
-        eVal  = doApply fun' (Neutral (Var s') (eval ctx t))
-        e'    = readBack (s' : used') eVal
-        in Abst s' t' e'
+    fun@(Closure cl ctx) -> let
+        (constr,s,t,e) = extract cl
+        used'   = used ++ keys ctx
+        s'      = newVar used' s
+        t'      = readBack used (eval ctx t)
+        fun'    = Closure (constr s t e) (extend ctx s' (Decl t))
+        eVal    = doApply fun' (Neutral (Var s') (eval ctx t))
+        e'      = readBack (s' : used') eVal
+        in constr s' t' e'
     Neutral v _ -> readBack used v
     otherwise -> v
 
@@ -154,7 +180,7 @@ headRed ctx t = case t of
 {- Printing utilities (should be in AbsCTT but these need 'readBack') -}
 
 instance Show Term where
-    show t = printTerm' 0 (if debug then t else (readBack (vars t) t))-- (readBack (vars t) t)
+    show t = printTerm' 0 (if debug then t else (readBack [] t))-- (readBack (vars t) t)
 
 printTerm' :: Int -> Term -> String
 printTerm' i t = case t of
@@ -163,15 +189,22 @@ printTerm' i t = case t of
     Abst s t e   -> par1 ++ abstS ++ par2
         where abstS = if not (containsVar s e)
                 then --A -> B
-                    printTerm' (i+1) t ++ " -> " ++ printTerm' next e
+                    printTerm' (i+1) t ++ " -> " ++ printTerm' 0 e
                 else
-                    "[" ++ show s ++ ":" ++ printTerm' 0 t ++ "]" ++ printTerm' next e
-              next = case e of
-                Abst _ _ _ -> 0
-                otherwise  -> 0 --i+1
+                    "[" ++ show s ++ ":" ++ printTerm' 0 t ++ "]" ++ printTerm' 0 e
+    Sigma s t e  -> par1 ++ abstS ++ par2
+        where abstS = if not (containsVar s e)
+                then --A -> B
+                    printTerm' (i+1) t ++ " * " ++ printTerm' 0 e
+                else
+                    "<" ++ show s ++ ":" ++ printTerm' 0 t ++ ">" ++ printTerm' 0 e
+    Pair t1 t2 -> "(" ++ printTerm' 0 t1 ++ "," ++ printTerm' 0 t2 ++ ")"
+    Fst t -> par1 ++ printTerm' (i + 1) t ++ ".1" ++ par2
+    Snd t -> par1 ++ printTerm' (i + 1) t ++ ".2" ++ par2
     App fun arg -> par1 ++ printTerm' (i+1) inner ++ " " ++ intercalate " " printedArgs ++ par2 -- ++ case mty of Nothing -> " :?" ; Just ty -> " :" ++ show ty
         where (inner,args) = collectApps (App fun arg) []
               printedArgs  = map (printTerm' (i+1)) args
+
     Nat          -> "N"
     Zero         -> "0"
     Succ t       -> par1 ++ "S " ++ show t ++ par2 --if isNum then show (n + 1) else "S" ++ printTerm' (i+1) t
@@ -183,7 +216,8 @@ printTerm' i t = case t of
     Sys sys      -> showSystem sys
     Partial phi t-> "[" ++ show phi ++ "]" ++ printTerm' 0 t
     Restr sys t  -> showSystem sys ++ printTerm' 0 t
-    Closure s tyV e ctx  -> "{" ++ show s ++ " : " ++ show tyV ++ "," ++ show e ++ {-"," ++ showCtx ctx ++-} "}"
+    --------
+    Closure cl ctx  -> "{" ++ show cl ++ {-"," ++ showCtx ctx ++-} "}"
     Neutral v t  -> "{{" ++ printTerm' 0 v ++ "}}:" ++ printTerm' (i+1) t 
     where (par1,par2) = if i == 0 then ("","") else ("(",")")
 

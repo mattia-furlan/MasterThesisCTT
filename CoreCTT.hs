@@ -16,8 +16,15 @@ import Interval
 data Term
     = Var Ident
     | Universe
+    {- Abstraction -}
     | Abst Ident Term Term
     | App Term Term
+    {- Sigma types -}
+    | Sigma Ident Term Term
+    | Pair Term Term
+    | Fst Term
+    | Snd Term
+    {- Naturals -}
     | Nat
     | Zero
     | Succ Term
@@ -29,7 +36,7 @@ data Term
     | Restr System Term
     | Comp DisjFormula Term Term Term --TODO
     {-  For values only: -}
-    | Closure Ident Term Term Ctx  -- ident,type,term,context
+    | Closure Term Ctx  -- 
     | Neutral Value Value          -- value,type
   deriving (Eq, Ord)
 
@@ -88,6 +95,10 @@ instance SyntacticObject Term where
         Universe          -> []
         Abst s t e        -> vars t ++ vars e
         App fun arg       -> vars fun ++ vars arg
+        Sigma s t e       -> vars t ++ vars e
+        Pair t1 t2        -> vars t1 ++ vars t2
+        Fst t             -> vars t
+        Snd t             -> vars t
         Nat               -> []
         Zero              -> []
         Succ t            -> vars t
@@ -97,13 +108,17 @@ instance SyntacticObject Term where
         Partial phi t     -> vars phi ++ vars t
         Restr sys t       -> vars sys ++ vars t
         Comp psi x0 fam u -> vars psi ++ vars x0 ++ vars fam ++ vars u
-        Closure s t e ctx -> [s] ++ keys ctx
+        Closure t ctx     -> vars t ++ keys ctx
         Neutral v _       -> vars t
     freeVars t = case t of
         Var s             -> [s]
         Universe          -> []
         Abst s t e        -> freeVars t ++ filter (/= s) (freeVars e)
         App fun arg       -> freeVars fun ++ freeVars arg
+        Sigma s t e       -> freeVars t ++ filter (/= s) (freeVars e)
+        Pair t1 t2        -> freeVars t1 ++ freeVars t2
+        Fst t             -> freeVars t
+        Snd t             -> freeVars t
         Nat               -> []
         Zero              -> []
         Succ t            -> freeVars t
@@ -113,7 +128,7 @@ instance SyntacticObject Term where
         Partial phi t     -> freeVars phi ++ freeVars t
         Restr sys t       -> freeVars sys ++ freeVars t
         Comp psi x0 fam u -> freeVars psi ++ freeVars x0 ++ freeVars fam ++ freeVars u
-        Closure s t e ctx -> keys ctx
+        Closure t ctx     -> freeVars t ++ keys ctx
         Neutral v _       -> freeVars v
 
 instance SyntacticObject AtomicFormula where
@@ -139,6 +154,11 @@ checkTermShadowing vars t = case t of
     Abst s t e          -> s `notElem` vars &&
         checkTermShadowing (s : vars) t && checkTermShadowing (s : vars) e 
     App fun arg         -> checkTermShadowing vars fun && checkTermShadowing vars arg
+    Sigma s t e         -> s `notElem` vars &&
+        checkTermShadowing (s : vars) t && checkTermShadowing (s : vars) e 
+    Pair t1 t2          -> checkTermShadowing vars t1 && checkTermShadowing vars t2
+    Fst t               -> checkTermShadowing vars t
+    Snd t               -> checkTermShadowing vars t
     Nat                 -> True
     Zero                -> True
     Succ n              -> checkTermShadowing vars n

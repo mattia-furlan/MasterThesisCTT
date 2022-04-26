@@ -27,12 +27,26 @@ inferType ctx dirs t = myTrace ("[inferType]=> t = " ++ show t ++ ", ctx = ..."{
             makeRestr sys val ty = foldRestr (map (\(psi,g) -> (psi,doApply g val)) sys) ty
 
         case funTy' of
-            c@(Closure s t e ctx1) -> do
+            c@(Closure (Abst s t e) ctx1) -> do
                 checkType ctx dirs arg (eval ctx1 t)
                 let argVal = eval ctx arg
                 return $ box argVal (doApply c argVal)
             otherwise -> Left $
                 "term '" ++ show fun ++ "' has type '" ++ show funTy ++ "' , which is not a product"
+    Fst p -> do --TODO `p` could have restricted ∑ type
+        ty <- inferType ctx dirs p
+        case ty of
+            c@(Closure (Sigma s t e) ctx1) -> do
+                return $ eval ctx1 t
+            otherwise -> Left $
+                "term '" ++ show t ++ "' has type '" ++ show ty ++ "' , which is not a sum"
+    Snd p -> do --TODO `p` could have restricted ∑ type
+        ty <- myTrace ("[checkType] Snd " ++ show p) $ inferType ctx dirs p
+        case ty of
+            c@(Closure (Sigma s t e) ctx1) -> do
+                return $ doApply c (doFst $ eval ctx p)
+            otherwise -> Left $
+                "term '" ++ show t ++ "' has type '" ++ show ty ++ "' , which is not a sum"
     Nat -> Right Universe
     Zero -> Right Nat
     Succ n -> do
@@ -83,7 +97,10 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
     (Abst s t e,Universe) -> do
         checkType ctx dirs t Universe
         checkType (extend ctx s (Decl t)) dirs e Universe
-    (Abst s t e,Closure s1 t1 e1 ctx1) -> {-myTrace ("s = " ++ show s ++ ", t = " ++ show t ++ ", e = " ++ show e ++ ", s1 = " ++ show s1 ++ ", t1 = " ++ show t1Val ++ ", e1 = " ++ show e1) $-} do
+    (Sigma s t e,Universe) -> do
+        checkType ctx dirs t Universe
+        checkType (extend ctx s (Decl t)) dirs e Universe
+    (Abst s t e,Closure (Abst s1 t1 e1) ctx1) -> {-myTrace ("s = " ++ show s ++ ", t = " ++ show t ++ ", e = " ++ show e ++ ", s1 = " ++ show s1 ++ ", t1 = " ++ show t1Val ++ ", e1 = " ++ show e1) $-} do
         checkType ctx dirs t Universe
         let tVal  = eval ctx t
             t1Val = tVal --eval ctx1 t1
@@ -100,6 +117,15 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
             else
                 extend (extend ctx s (Decl t)) s (Val (Neutral (Var var) tVal))
         checkType ctx' dirs e e1Val
+    (Pair p1 p2,Closure (Sigma s1 t1 e1) ctx1) -> do
+        let t1Val = eval ctx1 t1
+        checkType ctx dirs p1 t1Val
+
+        let e1Val = doApply v (eval ctx p1)
+        when (e1Val == I) $
+            Left $ "I cannot appear as codomain in sums"
+        --let ctx' = extend (extend ctx s (Decl t)) s (Val (Neutral (Var var) tVal))
+        checkType ctx dirs p2 e1Val
     (e,Restr sys ty) -> do
         let eVal = eval ctx e
             phi  = getSystemFormula sys
@@ -197,10 +223,17 @@ convPartialDisj used (Disj df) dirs v1 v2 = myTrace ("[convPartialDisj] disj = "
 instance Convertible DisjFormula where
     conv _ dirs disj1 disj2 = eqFormulas dirs disj1 disj2
 
+sameKind :: Term -> Term -> Bool
+sameKind (Abst _ _ _) (Abst _ _ _) = True
+sameKind (Sigma _ _ _) (Sigma _ _ _) = True
+sameKind _ _ = False
+
 instance Convertible Value where
     conv used dirs v1 v2 =
         v1 == v2 || case (v1,v2) of
-            (Closure s1 t1 e1 ctx1,Closure s2 t2 e2 ctx2) -> let
+            (Closure cl1 ctx1,Closure cl2 ctx2) | sameKind cl1 cl2 -> let
+                (_,s1,t1,e1) = extract cl1
+                (_,s2,t2,e2) = extract cl2
                 var = newVar (used ++ keys ctx2) s1
                 t1V = eval ctx1 t1
                 t2V = eval ctx2 t2
@@ -208,6 +241,15 @@ instance Convertible Value where
                 e2' = doApply v2 (Neutral (Var var) t2V)
                 in conv used dirs t1V t2V && conv (var : used) dirs e1' e2'
             (Universe,Universe) -> True
+            {- Sigma types -}
+            (Fst v1,Fst v2) -> conv used dirs v1 v2
+            (Snd v1,Snd v2) -> conv used dirs v1 v2
+            (Pair v1 v1',Pair v2 v2') -> conv used dirs v1 v1' &&
+                conv used dirs v2 v2'
+            (v,Pair v1 v2) -> conv used dirs (doFst v) v1 && --TODO: is this `eta`?
+                conv used dirs (doSnd v) v2
+            (Pair v1 v2,v) -> conv used dirs v1 (doFst v) &&
+                conv used dirs v2 (doSnd v)
             {- Naturals -}
             (Nat,Nat)           -> True
             (Zero,Zero)         -> True

@@ -58,7 +58,11 @@ checkVars ctx t = case t of
     Var s             -> isJust $ lookup s ctx
     Universe          -> True
     Abst s t e        -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
-    App fun arg       -> checkVars ctx fun && checkVars ctx arg
+    App fun arg       -> checkVars ctx fun && checkVars ctx arg 
+    Sigma s t e       -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
+    Pair t1 t2        -> checkVars ctx t1 && checkVars ctx t2
+    Fst t             -> checkVars ctx t
+    Snd t             -> checkVars ctx t
     Nat               -> True
     Zero              -> True
     Succ t            -> checkVars ctx t
