@@ -52,6 +52,7 @@ import LexCTT
   ']' { PT _ (TS _ 22) }
   'comp' { PT _ (TS _ 23) }
   'ind' { PT _ (TS _ 24) }
+  '|' { PT _ (TS _ 25) }
   L_Ident  { PT _ (TV $$) }
 
 %%
@@ -62,6 +63,38 @@ Ident  : L_Ident { Ident $1 }
 Program :: { CoreCTT.Program }
 Program : ListToplevel { CoreCTT.Program $1 }
 
+Term :: { CoreCTT.Term }
+Term : Term1 '->' Term { CoreCTT.Abst (Ident "") $1 $3 }
+     | '[' Ident ':' Term ']' Term { CoreCTT.Abst $2 $4 $6 }
+     | Term1 { $1 }
+
+Term1 :: { CoreCTT.Term }
+Term1 : Term2 '*' Term1 { CoreCTT.Sigma (Ident "") $1 $3 }
+      | '<' Ident ':' Term '>' Term { CoreCTT.Sigma $2 $4 $6 }
+      | '[' DisjFormula ']' Term1 { CoreCTT.Partial $2 $4 }
+      | System Term1 { CoreCTT.Restr $1 $2 }
+      | Term2 ',' Term2 { CoreCTT.Pair $1 $3 }
+      | Term2 { $1 }
+
+Term2 :: { CoreCTT.Term }
+Term2 : Term2 Term3 { CoreCTT.App $1 $2 }
+      | 'ind' Term3 Term3 Term3 Term3 { CoreCTT.Ind $2 $3 $4 $5 }
+      --| 'comp' DisjFormula Term3 Term2 Term2 { CoreCTT.Comp $2 $3 $4 $5 }
+      | 'S' Term3 { CoreCTT.Succ $2 }
+      | Term3 { $1 }
+
+Term3 :: { CoreCTT.Term }
+Term3 : Ident { CoreCTT.Var $1 }
+      | 'U' { CoreCTT.Universe }
+      | 'N' { CoreCTT.Nat }
+      | '0' { CoreCTT.Zero }
+      | 'I' { CoreCTT.I }
+      | Term3 '.1' { CoreCTT.Fst $1 }
+      | Term3 '.2' { CoreCTT.Snd $1 }
+      | System { CoreCTT.Sys $1 }
+      | '(' Term ')' { $2 }
+
+{-
 Term :: { CoreCTT.Term }
 Term : Term1 { $1 }
      | Term1 '->' Term { CoreCTT.Abst (Ident "") $1 $3 }
@@ -89,6 +122,7 @@ Term2 : Ident { CoreCTT.Var $1 }
       | Term2 '.2' { CoreCTT.Snd $1 }
       | System { CoreCTT.Sys $1 }
       | '(' Term ')' { $2 }
+-}
 
 Toplevel :: { CoreCTT.Toplevel }
 Toplevel : Ident ':' Term '=' Term { CoreCTT.Definition $1 $3 $5 }
@@ -130,7 +164,7 @@ SysElem : ConjFormula '->' Term { ($1,$3) }
 ListSysElem :: { [(ConjFormula,CoreCTT.Term)] }
 ListSysElem : {- empty -} { [] }
             | SysElem { (:[]) $1 }
-            | SysElem ',' ListSysElem { (:) $1 $3 }
+            | SysElem '|' ListSysElem { (:) $1 $3 }
 
 {
 
