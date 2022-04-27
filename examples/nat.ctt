@@ -11,19 +11,17 @@ plus : N -> N -> N = [m : N][n : N] ind idN m ([n':N][mPlusn:N]S mPlusn) n ;
 
 mult : N -> N -> N = [m : N][n : N] ind idN 0 ([n':N][mTimesn:N] plus mTimesn m) n ;
 
-{-
 exp : N -> N -> N = [m : N][n : N] ind idN (S 0) ([n':N][mExpn:N] mult mExpn m) n ;
 
 tetra : N -> N -> N = [m : N][n : N] ind idN (S 0) ([n':N][mTetran:N] exp m mTetran) n ;
 
-succ (S S S S 0) ;
+succ (S (S (S (S 0)))) ;
 
-plus (S S S 0) (S S S 0) ;
--}
+plus (S (S (S 0))) (S (S (S 0))) ;
 
 mult (S 0) (S 0) ;
 
---exp (S S S 0) (S S S 0) ;
+exp (S (S (S 0))) (S (S (S 0))) ;
 
 {- Some logic -}
 
@@ -51,13 +49,13 @@ pi2 : [A:U][B:U] prod A B -> B = [A:U][B:U][p : prod A B] p (S 0) ;
 couple : [A:U][B:U] A -> B -> prod A B = [A:U][B:U][a:A][b:B][x:N] ind ([y:N]ind ([z:N]U) A ([n:N][p:U]B) y) a ([n:N][p:ind ([w:N]U) A ([m:N][q:U]B) n] b) x;
 
 NpN : U = prod N N ;
-couple13 : NpN = couple N N (S 0) (S S S 0) ;
+couple13 : NpN = couple N N (S 0) (S (S (S 0))) ;
 pi1 N N couple13 ;
 pi2 N N couple13 ;
 
 NpNpN : U = prod NpN N ;
-triple135 : NpNpN = couple NpN N couple13 (S S S S S 0) ;
---triple135' : NpNpN = couple NpN N (couple N N (S 0) (exp (S S S 0) (S ([f:N->N]0)(S 0) ))) (plus (S S S S 0) (tetra 0 0)) ;
+triple135 : NpNpN = couple NpN N couple13 (S (S (S (S (S 0))))) ;
+--triple135' : NpNpN = couple NpN N (couple N N (S 0) (exp (S (S (S 0))) (S ([f:N->N]0)(S 0) ))) (plus (S (S (S (S 0)))) (tetra 0 0)) ;
 
 pi1 N N (pi1 NpN N triple135) ;  --reduces to 1
 pi2 N N (pi1 NpN N triple135) ;  --reduces to 3

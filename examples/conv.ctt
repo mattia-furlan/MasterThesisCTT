@@ -1,5 +1,5 @@
 idty : N -> U = N -> U ;
-Path : [A:U]A -> A -> U = [A:U][a0:A][a1:A][i:I][(i = 0) -> a0, (i = 1) -> a1]A ;
+Path : [A:U]A -> A -> U = [A:U][a0:A][a1:A][i:I][(i = 0) -> a0 | (i = 1) -> a1]A ;
 refl : [A:U][a:A]Path A a a = [A:U][a:A]I -> a ;
 A : U ;
 a : A ;
@@ -13,18 +13,18 @@ d : P (x j) ;
 
 example : [i = j]P(x i) = [i = j -> d] ;
 
-example' : [i = j]U = [i = j -> P(x i), i = j -> P(x j)] ;
+example' : [i = j]U = [i = j -> P(x i) | i = j -> P(x j)] ;
 
 g : N -> N ;
 h : N -> N ;
-f : [i = 0 -> g, i = 1 -> h]N -> N ;
+f : [i = 0 -> g | i = 1 -> h](N -> N) ;
 
-fOK : N = f 0 ;  -- f 0 => [i = 0 -> g 0, i = 1 -> h 0] N
+fOK : N = f 0 ;  -- f 0 => [i = 0 -> g 0 | i = 1 -> h 0] N
 fOK' : [i = 0 -> f 0]N = fOK ;
 
 gU : N -> U = [n:N] ind (N -> U) N (N -> N -> [XX:U]XX) n ;
-fU : [k:I][k = 0 -> gU, k = 1 -> idty]N -> U ;
+fU : [k:I][k = 0 -> gU | k = 1 -> idty](N -> U) ;
 
-sys : [k:I][k = 0 \/ k = 1]U = [k:I][k = 0 -> fU k 0, k = 1 -> N] ;
+sys : [k:I][k = 0 \/ k = 1]U = [k:I][k = 0 -> fU k 0 | k = 1 -> N] ;
 
-test : [i = 0 \/ (i = j /\ i = 1)]U = [i = 0 -> sys i, (i = 1 /\ i = j) -> sys j] ;
+test : [i = 0 \/ (i = j /\ i = 1)]U = [i = 0 -> sys i | (i = 1 /\ i = j) -> sys j] ;
