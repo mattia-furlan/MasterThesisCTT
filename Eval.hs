@@ -89,14 +89,16 @@ extract :: Value -> (Ident -> Term -> Term -> Value,Ident,Term,Term)
 extract (Abst s t e) = (Abst,s,t,e)
 extract (Sigma s t e) = (Sigma,s,t,e)
 extract v = error $ "[extract] got " ++ show v
--- Evaluates a closure
+
+evalClosure :: Value -> Value -> Value
+evalClosure (Closure (Abst s t e) ctx) arg  = eval (extend ctx s (Val arg)) e
+evalClosure (Closure (Sigma s t e) ctx) arg = eval (extend ctx s (Val arg)) e
+
 doApply :: Value -> Value -> Value
-doApply fun@(Closure cl ctx) arg = {-myTrace ("[doApply] fun = " ++ show fun ++ ", arg = " ++ show arg) $-} 
-    let (_,s,t,e) = extract cl
-        ctx'    = extend ctx s (Val arg)
-    in eval ctx' e
-doApply (Restr sys fun) arg = doApply fun arg
-doApply (Neutral f fty) arg = {-myTrace ("[doApply] neutral = " ++ show f ++ ", arg = " ++ show arg) $-} Neutral (App f arg) (doApply fty arg)
+doApply fun@(Closure (Abst s t e) ctx) arg = {-myTrace ("[doApply] fun = " ++ show fun ++ ", arg = " ++ show arg) $-} 
+    evalClosure fun arg
+doApply (Restr _ fun) arg = doApply fun arg
+doApply (Neutral f fty) arg = Neutral (App f arg) (doApply fty arg)
 
 -- Evaluates nat-induction
 doInd :: Value -> Value -> Value -> Value -> Value
@@ -114,12 +116,14 @@ doFst :: Value -> Value
 doFst v = case v of
     Pair v1 v2   -> v1
     Neutral x (Closure (Sigma s t e) ctx) -> Neutral (Fst v) (eval ctx t)
+    Neutral x (Restr _ cl) -> doFst (Neutral x cl)
     otherwise -> error $ "[doFst] got " ++ show v
 
 doSnd :: Value -> Value
 doSnd v = case v of
     Pair v1 v2   -> v2
-    Neutral x ty@(Closure (Sigma s t e) ctx) -> Neutral (Snd v) (doApply ty x)
+    Neutral x ty@(Closure (Sigma s t e) ctx) -> Neutral (Snd v) (evalClosure ty x)
+    Neutral x (Restr _ cl) -> doSnd (Neutral x cl)
     otherwise -> error $ "[doSnd] got " ++ show v
 
 
@@ -144,7 +148,7 @@ readBack used v = case v of
         s'      = newVar used' s
         t'      = readBack used (eval ctx t)
         fun'    = Closure (constr s t e) (extend ctx s' (Decl t))
-        eVal    = doApply fun' (Neutral (Var s') (eval ctx t))
+        eVal    = evalClosure fun' (Neutral (Var s') (eval ctx t))
         e'      = readBack (s' : used') eVal
         in constr s' t' e'
     Neutral v _ -> readBack used v
@@ -198,7 +202,7 @@ printTerm' i t = case t of
                     printTerm' (i+1) t ++ " * " ++ printTerm' 0 e
                 else
                     "<" ++ show s ++ ":" ++ printTerm' 0 t ++ ">" ++ printTerm' 0 e
-    Pair t1 t2 -> "(" ++ printTerm' 0 t1 ++ "," ++ printTerm' 0 t2 ++ ")"
+    Pair t1 t2 -> par1 ++ printTerm' i t1 ++ "," ++ printTerm' i t2 ++ par2
     Fst t -> par1 ++ printTerm' (i + 1) t ++ ".1" ++ par2
     Snd t -> par1 ++ printTerm' (i + 1) t ++ ".2" ++ par2
     App fun arg -> par1 ++ printTerm' (i+1) inner ++ " " ++ intercalate " " printedArgs ++ par2 -- ++ case mty of Nothing -> " :?" ; Just ty -> " :" ++ show ty
@@ -207,15 +211,15 @@ printTerm' i t = case t of
 
     Nat          -> "N"
     Zero         -> "0"
-    Succ t       -> par1 ++ "S " ++ show t ++ par2 --if isNum then show (n + 1) else "S" ++ printTerm' (i+1) t
+    Succ t       -> par1 ++ "S " ++ printTerm' (i+1) t ++ par2 --if isNum then show (n + 1) else "S" ++ printTerm' (i+1) t
         where (isNum,n) = isNumeral t
 
     Ind ty b s n -> par1 ++ "ind-N " ++ (printTerm' (i+1) ty) ++ " " ++ (printTerm' (i+1) b) ++ " "
          ++ (printTerm' (i+1) s) ++ " " ++ (printTerm' (i+1) n) ++ par2
     I            -> "I"
     Sys sys      -> showSystem sys
-    Partial phi t-> "[" ++ show phi ++ "]" ++ printTerm' 0 t
-    Restr sys t  -> showSystem sys ++ printTerm' 0 t
+    Partial phi t-> "[" ++ show phi ++ "]" ++ printTerm' (i+1) t
+    Restr sys t  -> showSystem sys ++ printTerm' (i+1) t
     --------
     Closure cl ctx  -> "{" ++ show cl ++ {-"," ++ showCtx ctx ++-} "}"
     Neutral v t  -> "{{" ++ printTerm' 0 v ++ "}}:" ++ printTerm' (i+1) t 
@@ -245,4 +249,4 @@ showEntry (s,Def ty val) = show s ++ " : " ++ showOnlyShort (show ty) ++ " = " +
 showEntry (s,Val val) = show s ++ " => " ++ show val
 
 showSystem :: System -> String
-showSystem sys = "[" ++ intercalate ", " (map (\(ff,t) -> "(" ++ show ff ++ ") -> " ++ show t) sys) ++ "]"
+showSystem sys = "[" ++ intercalate " | " (map (\(ff,t) -> show ff ++ " -> " ++ show t) sys) ++ "]"

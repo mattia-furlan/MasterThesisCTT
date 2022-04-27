@@ -33,18 +33,32 @@ inferType ctx dirs t = myTrace ("[inferType]=> t = " ++ show t ++ ", ctx = ..."{
                 return $ box argVal (doApply c argVal)
             otherwise -> Left $
                 "term '" ++ show fun ++ "' has type '" ++ show funTy ++ "' , which is not a product"
-    Fst p -> do --TODO `p` could have restricted ∑ type
+    Fst p -> do
         ty <- inferType ctx dirs p
-        case ty of
+
+        let (ty',box) = case ty of
+                Restr sys t -> (t,makeRestr sys)
+                otherwise   -> (ty,id)
+            makeRestr :: System -> Value -> Value
+            makeRestr sys ty = foldRestr (map (\(psi,q) -> (psi,doFst q)) sys) ty
+
+        case ty' of
             c@(Closure (Sigma s t e) ctx1) -> do
-                return $ eval ctx1 t
+                return $ box (eval ctx1 t)
             otherwise -> Left $
                 "term '" ++ show t ++ "' has type '" ++ show ty ++ "' , which is not a sum"
-    Snd p -> do --TODO `p` could have restricted ∑ type
-        ty <- myTrace ("[checkType] Snd " ++ show p) $ inferType ctx dirs p
-        case ty of
+    Snd p -> do
+        ty <- inferType ctx dirs p
+
+        let (ty',box) = case ty of
+                Restr sys t -> (t,makeRestr sys)
+                otherwise   -> (ty,id)
+            makeRestr :: System -> Value -> Value
+            makeRestr sys ty = foldRestr (map (\(psi,q) -> (psi,doSnd q)) sys) ty
+
+        case ty' of
             c@(Closure (Sigma s t e) ctx1) -> do
-                return $ doApply c (doFst $ eval ctx p)
+                return $ box $ evalClosure c (doFst $ eval ctx p)
             otherwise -> Left $
                 "term '" ++ show t ++ "' has type '" ++ show ty ++ "' , which is not a sum"
     Nat -> Right Universe
@@ -121,7 +135,7 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
         let t1Val = eval ctx1 t1
         checkType ctx dirs p1 t1Val
 
-        let e1Val = doApply v (eval ctx p1)
+        let e1Val = evalClosure v (eval ctx p1)
         when (e1Val == I) $
             Left $ "I cannot appear as codomain in sums"
         --let ctx' = extend (extend ctx s (Decl t)) s (Val (Neutral (Var var) tVal))
@@ -237,8 +251,8 @@ instance Convertible Value where
                 var = newVar (used ++ keys ctx2) s1
                 t1V = eval ctx1 t1
                 t2V = eval ctx2 t2
-                e1' = doApply v1 (Neutral (Var var) t1V)
-                e2' = doApply v2 (Neutral (Var var) t2V)
+                e1' = evalClosure v1 (Neutral (Var var) t1V)
+                e2' = evalClosure v2 (Neutral (Var var) t2V)
                 in conv used dirs t1V t2V && conv (var : used) dirs e1' e2'
             (Universe,Universe) -> True
             {- Sigma types -}

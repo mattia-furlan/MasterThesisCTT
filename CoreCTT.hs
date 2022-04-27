@@ -152,10 +152,10 @@ checkTermShadowing vars t = case t of
     Universe            -> True
     Abst (Ident "") t e -> checkTermShadowing vars t && checkTermShadowing vars e
     Abst s t e          -> s `notElem` vars &&
-        checkTermShadowing (s : vars) t && checkTermShadowing (s : vars) e 
+        checkTermShadowing vars t && checkTermShadowing (if s == Ident "" then vars else s : vars) e 
     App fun arg         -> checkTermShadowing vars fun && checkTermShadowing vars arg
     Sigma s t e         -> s `notElem` vars &&
-        checkTermShadowing (s : vars) t && checkTermShadowing (s : vars) e 
+        checkTermShadowing vars t && checkTermShadowing (if s == Ident "" then vars else s : vars) e 
     Pair t1 t2          -> checkTermShadowing vars t1 && checkTermShadowing vars t2
     Fst t               -> checkTermShadowing vars t
     Snd t               -> checkTermShadowing vars t
