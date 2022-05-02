@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
 module CoreCTT where
@@ -34,7 +33,7 @@ data Term
     | Sys System
     | Partial DisjFormula Term
     | Restr System Term
-    | Comp DisjFormula Term Term Term --TODO
+    | Comp Term Term
     {-  For values only: -}
     | Closure Term Ctx  -- 
     | Neutral Value Value          -- value,type
@@ -58,12 +57,10 @@ isNumeral _ = (False,0)
 
 -- Generates a new name starting from 'x' (maybe too inefficient - TODO)
 newVar :: [Ident] -> Ident -> Ident
-newVar used x = if x == Ident "" then --TODO necessary?
-        Ident ""
-    else if x `elem` used then
-        newVar used (Ident $ show x ++ "'")
-    else
-        x
+newVar used x
+    | x == Ident "" =  Ident "" --TODO necessary?
+    | x `elem` used = newVar used (Ident $ show x ++ "'")
+    | otherwise     =  x
 
 collectApps :: Term -> [Term] -> (Term,[Term])
 collectApps t apps = case t of
@@ -107,7 +104,7 @@ instance SyntacticObject Term where
         Sys sys           -> vars sys
         Partial phi t     -> vars phi ++ vars t
         Restr sys t       -> vars sys ++ vars t
-        Comp psi x0 fam u -> vars psi ++ vars x0 ++ vars fam ++ vars u
+        Comp fam u        -> vars fam ++ vars u
         Closure t ctx     -> vars t ++ keys ctx
         Neutral v _       -> vars t
     freeVars t = case t of
@@ -127,7 +124,7 @@ instance SyntacticObject Term where
         Sys sys           -> freeVars sys
         Partial phi t     -> freeVars phi ++ freeVars t
         Restr sys t       -> freeVars sys ++ freeVars t
-        Comp psi x0 fam u -> freeVars psi ++ freeVars x0 ++ freeVars fam ++ freeVars u
+        Comp fam u        -> freeVars fam ++ freeVars u
         Closure t ctx     -> freeVars t ++ keys ctx
         Neutral v _       -> freeVars v
 
@@ -168,7 +165,7 @@ checkTermShadowing vars t = case t of
     Sys sys             -> all (checkTermShadowing vars) (elems sys)
     Partial phi t       -> checkTermShadowing vars t
     Restr sys t         -> all (checkTermShadowing vars) (elems sys) && checkTermShadowing vars t
-    Comp psi x0 fam u   -> checkTermShadowing vars x0 && checkTermShadowing vars fam && checkTermShadowing vars u
+    Comp fam u          -> checkTermShadowing vars fam && checkTermShadowing vars u
 
 
 {- Printing functions are in 'Eval.hs' -}
@@ -181,9 +178,11 @@ type ErrorString = String
 
 --lookup :: (Eq a) => a -> [(a, b)] -> Maybe b --already defined in the Prelude
 
-extend :: [(k,a)] -> k -> a -> [(k,a)]
-extend al s v = (s,v) : al
+--extend :: [(k,a)] -> k -> a -> [(k,a)]
+--extend al s v = (s,v) : al
 
+extend :: Ctx -> Ident -> CtxEntry -> Ctx
+extend ctx s e = if s == Ident "" then ctx else (s,e) : ctx
 
 keys :: [(k,a)] -> [k]
 keys = map fst
@@ -255,7 +254,7 @@ getFormula v = case v of
     Sys sys       -> getSystemFormula sys
     Partial phi v -> phi
     Restr sys v   -> getSystemFormula sys
-    otherwise     -> Disj $ []
+    otherwise     -> fFalse
 
 isPartial :: Value -> Bool
 isPartial v = case v of
@@ -267,15 +266,11 @@ isRestr v = case v of
     Restr _ _   -> True
     otherwise   -> False
 
-splitPartial :: Value -> (DisjFormula,Value)
-splitPartial v = case v of
+split :: Value -> (DisjFormula,Value)
+split v = case v of
     Partial phi ty -> (phi,ty)
-    otherwise      -> (Disj [Conj []],v)
-
-splitRestr :: Value -> (System,Value)
-splitRestr v = case v of
-    Restr sys ty -> (sys,ty)
-    otherwise    -> ([],v)
+    Restr sys ty   -> (getSystemFormula sys,ty)
+    otherwise      -> (fTrue,v)
 
 getMsg :: Bool -> String -> String
 getMsg flag s = if flag then s else ""  

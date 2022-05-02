@@ -11,7 +11,7 @@ import CoreCTT
 import Debug.Trace
 
 debug :: Bool
-debug = False
+debug = True
 
 myTrace :: String -> a -> a
 myTrace s x = if debug then trace s x else x
@@ -27,7 +27,7 @@ lookupType s ((s',entry):ctx) = if s == s' then
         lookupType s ctx
 
 eval :: Ctx -> Term -> Value
-eval ctx t = myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx ctx ++ "\n\n") $ case t of
+eval ctx t = {-myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx ctx) $-} case t of
     Var s -> case lookup s ctx of
         Nothing -> error $ "[eval] not found var " ++ show s ++ " in ctx"
         Just (Val v)     -> v
@@ -52,6 +52,7 @@ eval ctx t = myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx ctx ++ "\n\n"
     Sys sys       -> Sys $ evalSystem ctx sys
     Partial phi t -> foldPartial (evalDisjFormula ctx phi) (eval ctx t)
     Restr sys t   -> foldRestr (evalSystem ctx sys) (eval ctx t)
+    Comp fam u    -> doComp (eval ctx fam) (eval ctx u)
     otherwise     -> error $ "[eval] got " ++ show t
 
 evalConjFormula :: Ctx -> ConjFormula -> ConjFormula
@@ -64,7 +65,7 @@ evalDisjFormula :: Ctx -> DisjFormula -> DisjFormula
 evalDisjFormula ctx (Disj df) = Disj $ map (evalConjFormula ctx) df
 
 foldRestr :: System -> Value -> Value
-foldRestr sys v = (uncurry Restr) $ foldRestr' sys v
+foldRestr sys v = uncurry Restr $ foldRestr' sys v
     where
         foldRestr' :: System -> Value -> (System,Value)
         foldRestr' sys v = case v of
@@ -72,7 +73,7 @@ foldRestr sys v = (uncurry Restr) $ foldRestr' sys v
             otherwise     -> (sys,v)
 
 foldPartial :: DisjFormula -> Value -> Value
-foldPartial disj v = (uncurry Partial) $ foldPartial' disj v
+foldPartial disj v = uncurry Partial $ foldPartial' disj v
     where
         foldPartial' :: DisjFormula -> Value -> (DisjFormula,Value)
         foldPartial' disj v = case v of
@@ -91,14 +92,15 @@ extract (Sigma s t e) = (Sigma,s,t,e)
 extract v = error $ "[extract] got " ++ show v
 
 evalClosure :: Value -> Value -> Value
-evalClosure (Closure (Abst s t e) ctx) arg  = eval (extend ctx s (Val arg)) e
-evalClosure (Closure (Sigma s t e) ctx) arg = eval (extend ctx s (Val arg)) e
+evalClosure (Closure (Abst s t e) ctx) arg  = eval (if s == Ident "" then ctx else extend ctx s (Val arg)) e
+evalClosure (Closure (Sigma s t e) ctx) arg = eval (if s == Ident "" then ctx else extend ctx s (Val arg)) e
+evalClosure v arg = error $ "[evalClosure] got non-closure " ++ show v 
 
 doApply :: Value -> Value -> Value
 doApply fun@(Closure (Abst s t e) ctx) arg = {-myTrace ("[doApply] fun = " ++ show fun ++ ", arg = " ++ show arg) $-} 
     evalClosure fun arg
 doApply (Restr _ fun) arg = doApply fun arg
-doApply (Neutral f fty) arg = Neutral (App f arg) (doApply fty arg)
+doApply (Neutral f fty) arg = Neutral (App (Neutral f fty) arg) (doApply fty arg)
 
 -- Evaluates nat-induction
 doInd :: Value -> Value -> Value -> Value -> Value
@@ -126,6 +128,15 @@ doSnd v = case v of
     Neutral x (Restr _ cl) -> doSnd (Neutral x cl)
     otherwise -> error $ "[doSnd] got " ++ show v
 
+doComp :: Value -> Value -> Value
+doComp fam@(Closure (Abst i I ty) ctx) u@(Sys sys) =
+    case eval ctx (App ty (Var i)) of
+        {-Closure 
+        -}
+        Neutral ty' Universe -> myTrace ("[doComp] Neutral " ++ show ty' ++ " U") $
+            let sys' = map (\(psi,_) -> (psi,App u (Var i))) sys
+            in Neutral (Comp fam u)
+                (Closure (Abst i I (Restr sys' (App ty (Var i)))) ctx)
 
 getNeutralType :: Value -> Value
 getNeutralType (Neutral _ ty) = ty
@@ -164,6 +175,8 @@ headRedV :: Ctx -> Term -> Value
 headRedV ctx (Var s) = getLeastEval ctx s
 headRedV ctx (App k n) = doApply (headRedV ctx k) (eval ctx n)
 headRedV ctx (Ind ty b s k) = doInd (eval ctx ty) (eval ctx b) (eval ctx s) (headRedV ctx k)
+headRedV ctx (Fst t) = doFst (eval ctx t)
+headRedV ctx (Snd t) = doSnd (eval ctx t)
 headRedV ctx t = eval ctx t
 
 --Gets the least evaluated form of 'x' from context
@@ -177,35 +190,38 @@ headRed :: Ctx -> Term -> Term
 headRed ctx t = case t of
     Abst s t e -> Abst s t e'
         where e' = headRed (extend ctx s (Decl t)) e
-    Succ t     -> Succ (headRed ctx t) 
+    Sigma s t e -> Sigma s t e'
+        where e' = headRed (extend ctx s (Decl t)) e
+    Succ t     -> Succ (headRed ctx t)
+    Pair t1 t2 -> Pair (headRed ctx t1) (headRed ctx t2)
     otherwise  -> readBack (keys ctx) (headRedV ctx t) 
 
 
 {- Printing utilities (should be in AbsCTT but these need 'readBack') -}
 
 instance Show Term where
-    show t = printTerm' 0 (if debug then t else (readBack [] t))-- (readBack (vars t) t)
+    show t = printTerm' 0 (if debug then t else readBack [] t)
 
 printTerm' :: Int -> Term -> String
 printTerm' i t = case t of
-    Var s    -> show s -- ++ case mty of Nothing -> ":?" ; Just ty -> ":" ++ show ty
+    Var s    -> show s
     Universe     -> "U"
     Abst s t e   -> par1 ++ abstS ++ par2
         where abstS = if not (containsVar s e)
-                then --A -> B
+                then -- A -> B
                     printTerm' (i+1) t ++ " -> " ++ printTerm' 0 e
                 else
                     "[" ++ show s ++ ":" ++ printTerm' 0 t ++ "]" ++ printTerm' 0 e
     Sigma s t e  -> par1 ++ abstS ++ par2
         where abstS = if not (containsVar s e)
-                then --A -> B
+                then -- A * B
                     printTerm' (i+1) t ++ " * " ++ printTerm' 0 e
                 else
                     "<" ++ show s ++ ":" ++ printTerm' 0 t ++ ">" ++ printTerm' 0 e
     Pair t1 t2 -> par1 ++ printTerm' i t1 ++ "," ++ printTerm' i t2 ++ par2
     Fst t -> par1 ++ printTerm' (i + 1) t ++ ".1" ++ par2
     Snd t -> par1 ++ printTerm' (i + 1) t ++ ".2" ++ par2
-    App fun arg -> par1 ++ printTerm' (i+1) inner ++ " " ++ intercalate " " printedArgs ++ par2 -- ++ case mty of Nothing -> " :?" ; Just ty -> " :" ++ show ty
+    App fun arg -> par1 ++ printTerm' (i+1) inner ++ " " ++ unwords printedArgs ++ par2
         where (inner,args) = collectApps (App fun arg) []
               printedArgs  = map (printTerm' (i+1)) args
 
@@ -214,15 +230,16 @@ printTerm' i t = case t of
     Succ t       -> par1 ++ "S " ++ printTerm' (i+1) t ++ par2 --if isNum then show (n + 1) else "S" ++ printTerm' (i+1) t
         where (isNum,n) = isNumeral t
 
-    Ind ty b s n -> par1 ++ "ind-N " ++ (printTerm' (i+1) ty) ++ " " ++ (printTerm' (i+1) b) ++ " "
-         ++ (printTerm' (i+1) s) ++ " " ++ (printTerm' (i+1) n) ++ par2
+    Ind ty b s n -> par1 ++ "ind-N " ++ printTerm' (i+1) ty ++ " " ++ printTerm' (i+1) b ++ " "
+         ++ printTerm' (i+1) s ++ " " ++ printTerm' (i+1) n ++ par2
     I            -> "I"
     Sys sys      -> showSystem sys
     Partial phi t-> "[" ++ show phi ++ "]" ++ printTerm' (i+1) t
     Restr sys t  -> showSystem sys ++ printTerm' (i+1) t
+    Comp fam u   -> par1 ++ "comp " ++ printTerm' (i+1) fam ++ " " ++ printTerm' (i+1) u ++ par2
     --------
-    Closure cl ctx  -> "{" ++ show cl ++ {-"," ++ showCtx ctx ++-} "}"
-    Neutral v t  -> "{{" ++ printTerm' 0 v ++ "}}:" ++ printTerm' (i+1) t 
+    Closure cl ctx  -> "Cl(" ++ show cl ++ {-"," ++ showCtx ctx ++-} ")"
+    Neutral v t  -> printTerm' i v -- "N{" ++ printTerm' i v {- ++ ":" ++ printTerm' (i+1) t -} ++ "}"
     where (par1,par2) = if i == 0 then ("","") else ("(",")")
 
 {-

@@ -72,7 +72,7 @@ checkVars ctx t = case t of
                          all (checkVars ctx) (elems sys)
     Partial phi t     -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx t
     Restr sys t       -> checkVars ctx (Sys sys) && checkVars ctx t
-    Comp psi x0 fam u -> checkVars ctx x0 && checkVars ctx fam && checkVars ctx u
+    Comp fam u        -> checkVars ctx fam && checkVars ctx u
 
 checkSingleToplevel :: Toplevel -> StateT ReplState IO Bool
 checkSingleToplevel (Example t) = do
@@ -180,13 +180,6 @@ doRepl = do
                     let ans' = headRed ctx term
                     printLnIO $ show ans'
                     put (ctx,ans',lockedNames)
-        ":conv" : sterm -> do
-            case pTerm (myLexer (intercalate " " sterm)) of
-                Left err ->
-                    printLnIO $ "could not parse term"
-                Right term -> do
-                    printLnIO $ if conv (keys ctx) emptyDirEnv (eval ctx term) (eval ctx ans) then "ok" else "no"
-                    --put (ctx,ans',lockedNames)
         ":clear" : idents -> do
             let ctx' = foldl removeFromCtx ctx (map Ident idents)
             put (ctx',ans,lockedNames)
