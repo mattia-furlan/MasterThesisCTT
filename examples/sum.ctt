@@ -44,6 +44,7 @@ AC : [A:U][B:U][C:A -> B -> U]([x:A]<y:B> C x y) -> <f:A -> B>[x:A] C x (f x) =
     [A:U][B:U][C:A -> B -> U][h : [x:A]<y:B> C x y]
         (([x:A](h x).1),([x:A](h x).2)) ;
 
+--This need eta-conversion
 indSigma : [A:U][B:A->U][C:(<x:A>B x)->U]([a:A][b:B a]C((a,b))) -> [p:<x:A>B x]C p =
     [A:U][B:A->U][C:(<x:A>B x)->U][h:[a:A][b:B a]C((a,b))][p:<x:A>B x]
         h p.1 p.2;

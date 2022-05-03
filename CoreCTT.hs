@@ -269,7 +269,7 @@ isRestr v = case v of
 split :: Value -> (DisjFormula,Value)
 split v = case v of
     Partial phi ty -> (phi,ty)
-    Restr sys ty   -> (getSystemFormula sys,ty)
+    Restr sys ty   -> (fTrue,ty)
     otherwise      -> (fTrue,v)
 
 getMsg :: Bool -> String -> String

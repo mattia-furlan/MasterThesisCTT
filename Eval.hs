@@ -101,6 +101,7 @@ doApply fun@(Closure (Abst s t e) ctx) arg = {-myTrace ("[doApply] fun = " ++ sh
     evalClosure fun arg
 doApply (Restr _ fun) arg = doApply fun arg
 doApply (Neutral f fty) arg = Neutral (App (Neutral f fty) arg) (doApply fty arg)
+doApply v arg = error $ "[doApply] got " ++ show v ++ ", " ++ show arg
 
 -- Evaluates nat-induction
 doInd :: Value -> Value -> Value -> Value -> Value
