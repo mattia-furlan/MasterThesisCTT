@@ -86,29 +86,35 @@ inferType ctx dirs t = myTrace ("[inferType]=> t = " ++ show t ++ ", ctx = ..."{
             )) -- [n : nat] ty n -> ty (suc n)
         let nVal = eval ctx n
         return $ doApply tyVal nVal
+    {-
     Comp fam u@(Abst i I (Sys sys)) -> do
         checkType ctx dirs fam (eval emptyCtx (Abst (Ident "") I Universe)) -- I -> U
         let bphi = getSystemFormula sys
+        var  <- checkCompFormula bphi
         checkType ctx dirs u (Closure (Abst i I (Partial bphi (App fam (Var i)))) ctx)
 
         let sys' = map (\psi -> (psi,App u (Var i))) (map fst sys)
         return $ Closure (Abst i I (Restr sys' (App fam (Var i)))) ctx
+    -}
     I  -> Right Universe --TODO ?
+    I0 -> Right I
+    I1 -> Right I
     _  -> Left $ "don't know how to infer type of '" ++ show t ++ "'"
 
-{-
-splitCompFormula :: DisjFormula -> Ident -> Either ErrorString DisjFormula
-splitCompFormula (Disj df) i =
-    case find (\case Conj [Eq0 s] -> i == s ; _ -> False) df of
-        Just base -> do
-            let phi = delete base df
-            when (i `elem` vars (Disj phi)) $
-                Left $ "formula '" ++ show (Disj df) ++ "' should contain " ++
-                    "just one occurrence of '" ++ show i ++ "'"
-            Right $ Disj phi
-        Nothing   -> Left $ "formula '" ++ show (Disj df) ++ "' should contain " ++
-            "one disjunction of the form '" ++ show i ++ " = 0"
--}
+checkCompFormula :: DisjFormula -> Either ErrorString Ident
+checkCompFormula phi@(Disj df) = 
+    case concatMap (\case Conj [Eq0 i] -> [i]; _ -> []) df of
+        []  -> Left $ "formula '" ++ show phi ++ "' does not contain any binding " ++
+            "of the form 'i = 0' (base case for composition)"
+        names -> case filter (\i -> length (filter ((i `elem`) . vars) df) == 1) names of
+            [i] -> return i
+            otherwise      -> Left $ "formula '" ++ show phi ++ "' must contain exactly one binding " ++
+                "of the form 'i = 0' (base case for composition), with 'i' not appearing again in the formula"
+
+getCompVar :: Value -> Ident
+getCompVar (Abst i I (Sys sys)) =
+    let Disj df = getSystemFormula sys
+    in head $ concatMap (\case Conj [Eq0 i] -> [i]; _ -> []) df
 
 isNat :: Term -> Value -> Either ErrorString ()
 isNat t Nat = Right ()
@@ -133,7 +139,7 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
     (Sigma s t e,Universe) -> do
         checkType ctx dirs t Universe
         checkType (extend ctx s (Decl t)) dirs e Universe
-    (Abst s t e,Closure (Abst s1 t1 e1) ctx1) -> {-myTrace ("s = " ++ show s ++ ", t = " ++ show t ++ ", e = " ++ show e ++ ", s1 = " ++ show s1 ++ ", t1 = " ++ show t1Val ++ ", e1 = " ++ show e1) $-} do
+    (Abst s t e,Closure (Abst s1 t1 e1) ctx1) -> do
         checkType ctx dirs t Universe
         let tVal  = eval ctx t
             t1Val = tVal --eval ctx1 t1
@@ -150,6 +156,13 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
             else
                 extend (extend ctx s (Decl t)) s (Val (Neutral (Var var) tVal))
         checkType ctx' dirs e e1Val
+    (Comp fam i0 u b,Closure (Abst x I e) ctx1) -> do
+        checkType ctx dirs fam (eval emptyCtx (Abst (Ident "") I Universe)) -- I -> U
+        checkType ctx dirs i0 I
+
+        checkType ctx dirs b (eval ctx (App fam i0))
+        --unless (compTypes ctx dirs (doApply ty (Neutral (Var s) I)) (doApply v (Neutral (Var s1) I))) $ Left $
+        --    "cannot type-check '" ++ show e ++ "' against type '" ++ show v ++ "'"
     (Pair p1 p2,Closure (Sigma s1 t1 e1) ctx1) -> do
         let t1Val = eval ctx1 t1
         checkType ctx dirs p1 t1Val
@@ -165,7 +178,7 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
         --checkDisjFormula ctx phi --It should have already been checked, right?
         checkType ctx dirs e ty
         unless (convPartialDisj (keys ctx) phi dirs eVal (Sys sys)) $
-            Left $ "term '" ++ show e ++ "' does not agree with '" ++ show sys ++ "' on " ++ show phi
+            Left $ "term '" ++ show e ++ "' does not agree with '" ++ show (Sys sys) ++ "' on " ++ show phi
     (Sys sys,Partial phi ty) -> myTrace ("sys = " ++ show sys) $ do
         let psis = keys sys
         mapM_ (checkConjFormula ctx) psis
@@ -192,22 +205,20 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
         mapM_ (\(conj,t) -> checkTypePartialConj conj ctx dirs t tyVal) sys
     otherwise -> myTrace ("[checkType-otherwise] e = " ++ show e ++ ", v = " ++ show v) $ do
         ty <- inferType ctx dirs e
-        {-myTrace ("[checkType-otherwise] " ++ show (iphi,ity) ++ " ~? " ++ show (vphi,vty)) $
-            unless (conv (keys ctx) dirs Universe ty v) $
-                    Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
-                        ++ "' of type '" ++ show ty ++ "' instead"-}
-        
-        let (iphi,ity) = split ty
-            (vphi,vty) = split v
-            syscheck = myTrace ("inferred ty = " ++ show ty) $ case (ty,v) of
-                (Restr isys _,Restr vsys _) ->
-                    convPartialDisj (keys ctx) vphi dirs (Sys isys) (Sys vsys)
-                otherwise -> True
-        myTrace ("[checkType-otherwise] " ++ show (iphi,ity) ++ " ~? " ++ show (vphi,vty)) $
-            unless (conv (keys ctx) dirs ity vty && impDisj dirs vphi iphi && syscheck) $
-                    Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
-                        ++ "' of type '" ++ show ty ++ "' instead"
-        
+        unless (compTypes ctx dirs ty v) $
+            Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
+                ++ "' of type '" ++ show ty ++ "' instead"
+
+compTypes :: Ctx -> DirEnv -> Value -> Value -> Bool
+compTypes ctx dirs ty v = myTrace ("[compTypes] " ++ show ty ++ " ~~ " ++ show v ++ ", dirs = " ++ show dirs) $
+    let (iphi,ity) = split ty
+        (vphi,vty) = split v
+        syscheck   = myTrace ("[compTypes] (iphi,ity) = " ++ show (iphi,ity) ++ ", (vphi,vty) = " ++ show (vphi,vty)) $ case (ty,v) of
+            (Restr isys _,Restr vsys _) ->
+                convPartialDisj (keys ctx) (getSystemFormula vsys) dirs (Sys isys) (Sys vsys)
+            otherwise -> True
+    in myTrace ("[compTypes] " ++ show (iphi,ity) ++ " ~? " ++ show (vphi,vty)) $
+        conv (keys ctx) dirs ity vty && impDisj dirs vphi iphi && syscheck
 
 checkConjFormula :: Ctx -> ConjFormula -> Either ErrorString ()
 checkConjFormula ctx cf = do
@@ -325,7 +336,7 @@ instance Convertible System where
 
 
 instance Convertible Value where
-    conv used dirs v1 v2 =
+    conv used dirs v1 v2 = myTrace ("[conv] " ++ show v1 ++ " ~ " ++ show v2 ++ ", dirs = " ++ show dirs)
         v1 == v2 || case (v1,v2) of
             (Closure cl1 ctx1,Closure cl2 ctx2) | sameKind cl1 cl2 -> let
                 (_,s1,t1,e1) = extract cl1
@@ -336,13 +347,13 @@ instance Convertible Value where
                 e1' = evalClosure v1 (Neutral (Var var) t1V)
                 e2' = evalClosure v2 (Neutral (Var var) t2V)
                 in conv used dirs t1V t2V && conv (var : used) dirs e1' e2'
-            (Closure (Abst s1 t1 e1) ctx1,v2) -> let
+            (Closure (Abst s1 t1 e1) ctx1,v2@(Neutral _ (Closure (Abst _ _ _) _))) -> let
                 var = newVar used s1
                 t1V = eval ctx1 t1
                 e1' = evalClosure v1 (Neutral (Var var) t1V)
                 e2' = doApply (simpl dirs v2) (Neutral (Var var) t1V)
                 in conv (var : used) dirs e1' e2'
-            (v1,Closure (Abst s2 t2 e2) ctx2) -> let
+            (v1@(Neutral _ (Closure (Abst _ _ _) _)),Closure (Abst s2 t2 e2) ctx2) -> let
                 var = newVar used s2
                 t2V = eval ctx2 t2
                 e2' = evalClosure v2 (Neutral (Var var) t2V)

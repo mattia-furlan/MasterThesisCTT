@@ -29,13 +29,13 @@ data Term
     | Succ Term
     | Ind Term Term Term Term
     {- Cubical -}
-    | I
+    | I | I0 | I1
     | Sys System
     | Partial DisjFormula Term
     | Restr System Term
-    | Comp Term Term
+    | Comp Term Term Term Term     -- type fam,i0,u,base
     {-  For values only: -}
-    | Closure Term Ctx  -- 
+    | Closure Term Ctx   
     | Neutral Value Value          -- value,type
   deriving (Eq, Ord)
 
@@ -101,10 +101,12 @@ instance SyntacticObject Term where
         Succ t            -> vars t
         Ind ty b s n      -> vars ty ++ vars b ++ vars s ++ vars n
         I                 -> []
+        I0                -> []
+        I1                -> []
         Sys sys           -> vars sys
         Partial phi t     -> vars phi ++ vars t
         Restr sys t       -> vars sys ++ vars t
-        Comp fam u        -> vars fam ++ vars u
+        Comp fam i0 u b   -> vars fam ++ vars i0 ++ vars u ++ vars b
         Closure t ctx     -> vars t ++ keys ctx
         Neutral v _       -> vars t
     freeVars t = case t of
@@ -121,10 +123,12 @@ instance SyntacticObject Term where
         Succ t            -> freeVars t
         Ind ty b s n      -> freeVars ty ++ freeVars b ++ freeVars s ++ freeVars n
         I                 -> []
+        I0                -> []
+        I1                -> []
         Sys sys           -> freeVars sys
         Partial phi t     -> freeVars phi ++ freeVars t
         Restr sys t       -> freeVars sys ++ freeVars t
-        Comp fam u        -> freeVars fam ++ freeVars u
+        Comp fam i0 u b   -> freeVars fam ++ freeVars i0 ++ freeVars u ++ freeVars b
         Closure t ctx     -> freeVars t ++ keys ctx
         Neutral v _       -> freeVars v
 
@@ -162,10 +166,13 @@ checkTermShadowing vars t = case t of
     Ind ty b s n        -> checkTermShadowing vars ty && checkTermShadowing vars b &&
         checkTermShadowing vars s && checkTermShadowing vars n
     I                   -> True
+    I0                  -> True
+    I1                  -> True
     Sys sys             -> all (checkTermShadowing vars) (elems sys)
     Partial phi t       -> checkTermShadowing vars t
     Restr sys t         -> all (checkTermShadowing vars) (elems sys) && checkTermShadowing vars t
-    Comp fam u          -> checkTermShadowing vars fam && checkTermShadowing vars u
+    Comp fam i0 u b     -> checkTermShadowing vars fam && checkTermShadowing vars i0 &&
+        checkTermShadowing vars u && checkTermShadowing vars b
 
 
 {- Printing functions are in 'Eval.hs' -}

@@ -47,12 +47,13 @@ import LexCTT
   'N' { PT _ (TS _ 17) }
   'S' { PT _ (TS _ 18) }
   'U' { PT _ (TS _ 19) }
-  '[' { PT _ (TS _ 20) }
-  '\\/' { PT _ (TS _ 21) }
-  ']' { PT _ (TS _ 22) }
-  'comp' { PT _ (TS _ 23) }
-  'ind' { PT _ (TS _ 24) }
-  '|' { PT _ (TS _ 25) }
+  'Z' { PT _ (TS _ 20) }
+  '[' { PT _ (TS _ 21) }
+  '\\/' { PT _ (TS _ 22) }
+  ']' { PT _ (TS _ 23) }
+  'comp' { PT _ (TS _ 24) }
+  'ind' { PT _ (TS _ 25) }
+  '|' { PT _ (TS _ 26) }
   L_Ident  { PT _ (TV $$) }
 
 %%
@@ -79,7 +80,7 @@ Term1 : Term2 '*' Term1 { CoreCTT.Sigma (Ident "") $1 $3 }
 Term2 :: { CoreCTT.Term }
 Term2 : Term2 Term3 { CoreCTT.App $1 $2 }
       | 'ind' Term3 Term3 Term3 Term3 { CoreCTT.Ind $2 $3 $4 $5 }
-      | 'comp' Term3 Term3 { CoreCTT.Comp $2 $3 }
+      | 'comp' Term3 Term3 Term3 Term3 { CoreCTT.Comp $2 $3 $4 $5 }
       | 'S' Term3 { CoreCTT.Succ $2 }
       | Term3 { $1 }
 
@@ -87,11 +88,13 @@ Term3 :: { CoreCTT.Term }
 Term3 : Ident { CoreCTT.Var $1 }
       | 'U' { CoreCTT.Universe }
       | 'N' { CoreCTT.Nat }
-      | '0' { CoreCTT.Zero }
+      | 'Z' { CoreCTT.Zero }
       | 'I' { CoreCTT.I }
       | Term3 '.1' { CoreCTT.Fst $1 }
       | Term3 '.2' { CoreCTT.Snd $1 }
       | System { CoreCTT.Sys $1 }
+      | '0' { CoreCTT.I0 }
+      | '1' { CoreCTT.I1 }
       | '(' Term ')' { $2 }
 
 {-

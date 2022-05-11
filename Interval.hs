@@ -112,7 +112,7 @@ addDiag dirs@(zeros,ones,diags) s1 s2
     | s1 `elem` zeros = addZero dirs s2
     | s2 `elem` zeros = addZero dirs s1
     | s1 `elem` ones  = addOne dirs s2
-    | s2 `elem` ones  = addZero dirs s1
+    | s2 `elem` ones  = addOne dirs s1
     | otherwise =
     let diags' = [if s1 `elem` set then s2 : set else if s2 `elem` set then s1 : set
                 else set | set <- diags]
@@ -138,6 +138,11 @@ addConj dirs (Conj conj) = foldl addAtomic dirs conj
 
 conjToDirEnv :: ConjFormula -> DirEnv
 conjToDirEnv = addConj emptyDirEnv
+
+--Assumes `env` is not inconsistent
+toConj :: DirEnv -> ConjFormula
+toConj env@(zeros,ones,dirs) = Conj $ map (\s -> (Eq0 s)) zeros ++ map (\s -> (Eq1 s)) ones
+    ++ concatMap (\part -> map ((\s -> Diag (head part) s)) $ tail part) dirs
 
 makesTrueAtomic :: DirEnv -> AtomicFormula -> Bool
 dirs@(zeros,ones,diags) `makesTrueAtomic` phi = case phi of

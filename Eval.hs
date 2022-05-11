@@ -2,7 +2,9 @@
 
 module Eval where
 
-import Data.List (intercalate)
+import Data.List (intercalate,nub,find)
+import Data.Foldable (foldrM)
+import Data.Maybe (mapMaybe,fromJust)
 
 import Ident
 import Interval
@@ -11,7 +13,7 @@ import CoreCTT
 import Debug.Trace
 
 debug :: Bool
-debug = True
+debug = False
 
 myTrace :: String -> a -> a
 myTrace s x = if debug then trace s x else x
@@ -49,20 +51,56 @@ eval ctx t = {-myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx ctx) $-} ca
               step' = eval ctx step
               n'    = eval ctx n
     I  -> I
-    Sys sys       -> Sys $ evalSystem ctx sys
-    Partial phi t -> foldPartial (evalDisjFormula ctx phi) (eval ctx t)
-    Restr sys t   -> foldRestr (evalSystem ctx sys) (eval ctx t)
-    Comp fam u    -> doComp (eval ctx fam) (eval ctx u)
-    otherwise     -> error $ "[eval] got " ++ show t
+    I0 -> I0
+    I1 -> I1
+    Sys sys         -> Sys $ evalSystem ctx sys
+    Partial phi t   -> foldPartial (evalDisjFormula ctx phi) (eval ctx t)
+    Restr sys t     -> foldRestr (evalSystem ctx sys) (eval ctx t)
+    Comp fam i0 u b -> doComp (eval ctx fam) (eval ctx i0) (eval ctx u) (eval ctx b)
+    otherwise       -> error $ "[eval] got " ++ show t
 
-evalConjFormula :: Ctx -> ConjFormula -> ConjFormula
-evalConjFormula ctx conj = foldr substConj conj bindings
+evalConjFormula :: Ctx -> ConjFormula -> Maybe ConjFormula
+evalConjFormula ctx conj = conj'
     where
-        bindings' = filter (\(s,v) -> s `elem` (vars conj)) (getBindings ctx)
-        bindings  = map (\case (s,Neutral (Var s') I) -> (s,s')) bindings'
+        entries     = filter (\(s,v) -> s `elem` (vars conj)) (getBindings ctx)
+        renamings   = concatMap (\case (s,Neutral (Var s') I) -> [(s,s')]; _ -> []) entries
+        renamedConj = foldr substConj conj renamings
+        vals        = filter (\(s,v) -> v == I0 || v == I1) entries
+        conj'       = foldrM evalConj renamedConj vals
+
+evalConj :: (Ident,Value) -> ConjFormula -> Maybe ConjFormula
+evalConj (s,I0) conj@(Conj cf) = myTrace ("conj' = " ++ show conj' ++ ", direnv = " ++ show (conjToDirEnv conj')) $
+    if conjToDirEnv conj `makesTrueAtomic` Eq1 s
+        || inconsistent (conjToDirEnv conj') then
+        Nothing
+    else
+        Just conj'
+    where
+        conj' = Conj . nub $ concatMap (\case
+            Eq0 s' | s == s' -> [];
+            Diag s1 s2 -> if s == s1 && s1 == s2 then []
+                else [if s == s1 then Eq0 s2
+                    else if s == s2 then Eq0 s1 else Diag s1 s2];
+            af -> [af]) cf
+evalConj (s,I1) conj@(Conj cf) = myTrace ("conj' = " ++ show conj' ++ ", direnv = " ++ show (conjToDirEnv conj')) $
+    if conjToDirEnv conj `makesTrueAtomic` Eq0 s
+        || inconsistent (conjToDirEnv conj') then
+        Nothing
+    else Just conj'
+    where
+        conj' = Conj . nub $ concatMap (\case
+            Eq1 s' | s == s' -> [];
+            Diag s1 s2 -> if s == s1 && s1 == s2 then []
+               else [if s == s1 then Eq1 s2
+                   else if s == s2 then Eq1 s1 else Diag s1 s2];
+            af -> [af]) cf
 
 evalDisjFormula :: Ctx -> DisjFormula -> DisjFormula
-evalDisjFormula ctx (Disj df) = Disj $ map (evalConjFormula ctx) df
+evalDisjFormula ctx (Disj df) = if Conj [] `elem` df' then
+        fTrue
+    else
+        Disj df'
+    where df' = mapMaybe (evalConjFormula ctx) df
 
 foldRestr :: System -> Value -> Value
 foldRestr sys v = uncurry Restr $ foldRestr' sys v
@@ -84,7 +122,12 @@ foldPartial disj v = uncurry Partial $ foldPartial' disj v
             [cf1 `meet` cf2 | cf1 <- df1, cf2 <- df2]  
 
 evalSystem :: Ctx -> System -> System
-evalSystem ctx sys = map (\(phi,t) -> (evalConjFormula ctx phi, eval ctx t)) sys
+evalSystem ctx sys = concatMap (\(phi,t) -> evalConjFormula' phi (eval ctx t)) sys
+    where
+        evalConjFormula' phi v = case evalConjFormula ctx phi of
+            Nothing -> []
+            Just cf -> [(cf,v)]
+
 
 extract :: Value -> (Ident -> Term -> Term -> Value,Ident,Term,Term)
 extract (Abst s t e) = (Abst,s,t,e)
@@ -100,7 +143,14 @@ doApply :: Value -> Value -> Value
 doApply fun@(Closure (Abst s t e) ctx) arg = {-myTrace ("[doApply] fun = " ++ show fun ++ ", arg = " ++ show arg) $-} 
     evalClosure fun arg
 doApply (Restr _ fun) arg = doApply fun arg
-doApply (Neutral f fty) arg = Neutral (App (Neutral f fty) arg) (doApply fty arg)
+doApply (Neutral f fty) arg = let aty = doApply fty arg in
+    case aty of
+        Restr sys v | any (\(cf,_) -> emptyDirEnv `makesTrueConj` cf) sys ->
+            snd . fromJust $ find (\(cf,_) -> emptyDirEnv `makesTrueConj` cf) sys
+        otherwise -> Neutral (App (Neutral f fty) arg) aty
+{-doApply (Comp fam i0 u b) arg = case arg of
+    I0 -> b
+    I1 -> Neutral-}
 doApply v arg = error $ "[doApply] got " ++ show v ++ ", " ++ show arg
 
 -- Evaluates nat-induction
@@ -129,15 +179,17 @@ doSnd v = case v of
     Neutral x (Restr _ cl) -> doSnd (Neutral x cl)
     otherwise -> error $ "[doSnd] got " ++ show v
 
-doComp :: Value -> Value -> Value
+doComp :: Value -> Value -> Value -> Value -> Value
+doComp fam i0 u b = Comp fam i0 u b -- TODO
+{-
 doComp fam@(Closure (Abst i I ty) ctx) u@(Sys sys) =
     case eval ctx (App ty (Var i)) of
-        {-Closure 
-        -}
+        --Closure (Sigma s cty dty) ctx1 ->
         Neutral ty' Universe -> myTrace ("[doComp] Neutral " ++ show ty' ++ " U") $
             let sys' = map (\(psi,_) -> (psi,App u (Var i))) sys
             in Neutral (Comp fam u)
                 (Closure (Abst i I (Restr sys' (App ty (Var i)))) ctx)
+-}
 
 getNeutralType :: Value -> Value
 getNeutralType (Neutral _ ty) = ty
@@ -225,19 +277,19 @@ printTerm' i t = case t of
     App fun arg -> par1 ++ printTerm' (i+1) inner ++ " " ++ unwords printedArgs ++ par2
         where (inner,args) = collectApps (App fun arg) []
               printedArgs  = map (printTerm' (i+1)) args
-
-    Nat          -> "N"
-    Zero         -> "0"
-    Succ t       -> par1 ++ "S " ++ printTerm' (i+1) t ++ par2 --if isNum then show (n + 1) else "S" ++ printTerm' (i+1) t
+    Nat             -> "N"
+    Zero            -> "0"
+    Succ t          -> par1 ++ "S " ++ printTerm' (i+1) t ++ par2 --if isNum then show (n + 1) else "S" ++ printTerm' (i+1) t
         where (isNum,n) = isNumeral t
-
-    Ind ty b s n -> par1 ++ "ind-N " ++ printTerm' (i+1) ty ++ " " ++ printTerm' (i+1) b ++ " "
+    Ind ty b s n    -> par1 ++ "ind-N " ++ printTerm' (i+1) ty ++ " " ++ printTerm' (i+1) b ++ " "
          ++ printTerm' (i+1) s ++ " " ++ printTerm' (i+1) n ++ par2
-    I            -> "I"
-    Sys sys      -> showSystem sys
-    Partial phi t-> "[" ++ show phi ++ "]" ++ printTerm' (i+1) t
-    Restr sys t  -> showSystem sys ++ printTerm' (i+1) t
-    Comp fam u   -> par1 ++ "comp " ++ printTerm' (i+1) fam ++ " " ++ printTerm' (i+1) u ++ par2
+    I               -> "I"
+    I0              -> "0"
+    I1              -> "1"
+    Sys sys         -> showSystem sys
+    Partial phi t   -> "[" ++ show phi ++ "]" ++ printTerm' (i+1) t
+    Restr sys t     -> showSystem sys ++ printTerm' (i+1) t
+    Comp fam i0 u b -> par1 ++ "comp " ++ printTerm' (i+1) fam ++ " " ++ printTerm' (i+1) u ++ par2
     --------
     Closure cl ctx  -> "Cl(" ++ show cl ++ {-"," ++ showCtx ctx ++-} ")"
     Neutral v t  -> printTerm' i v -- "N{" ++ printTerm' i v {- ++ ":" ++ printTerm' (i+1) t -} ++ "}"
