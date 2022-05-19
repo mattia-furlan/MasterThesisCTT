@@ -9,7 +9,7 @@ import Data.List ( intercalate )
 import Data.Maybe ( isJust )
 
 import LexCTT   ( Token )
-import ParCTT   ( pTerm, pToplevel, pProgram, myLexer )
+import ParCTT   ( pTerm, pToplevel, pProgram, pListTerm, pConjFormula, myLexer )
 
 import Ident
 import Interval
@@ -55,26 +55,27 @@ checkProgram (Program (toplevel : decls)) = do
 --Checks if a term contains undeclared variables (True = OK)
 checkVars :: Ctx -> Term -> Bool
 checkVars ctx t = case t of
-    Var s             -> isJust $ lookup s ctx
-    Universe          -> True
-    Abst s t e        -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
-    App fun arg       -> checkVars ctx fun && checkVars ctx arg 
-    Sigma s t e       -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
-    Pair t1 t2        -> checkVars ctx t1 && checkVars ctx t2
-    Fst t             -> checkVars ctx t
-    Snd t             -> checkVars ctx t
-    Nat               -> True
-    Zero              -> True
-    Succ t            -> checkVars ctx t
-    Ind ty b s n      -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
-    I                 -> True
-    I0                -> True
-    I1                -> True
-    Sys sys           -> all (\phi -> all (`elem` keys ctx) (vars phi)) (keys sys) &&
-                         all (checkVars ctx) (elems sys)
-    Partial phi t     -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx t
-    Restr sys t       -> checkVars ctx (Sys sys) && checkVars ctx t
-    Comp fam i0 u b   -> checkVars ctx fam && checkVars ctx i0 && checkVars ctx u && checkVars ctx b
+    Var s               -> isJust $ lookup s ctx
+    Universe            -> True
+    Abst s t e          -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
+    App fun arg         -> checkVars ctx fun && checkVars ctx arg 
+    Sigma s t e         -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
+    Pair t1 t2          -> checkVars ctx t1 && checkVars ctx t2
+    Fst t               -> checkVars ctx t
+    Snd t               -> checkVars ctx t
+    Nat                 -> True
+    Zero                -> True
+    Succ t              -> checkVars ctx t
+    Ind ty b s n        -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
+    I                   -> True
+    I0                  -> True
+    I1                  -> True
+    Sys sys             -> all (\phi -> all (`elem` keys ctx) (vars phi)) (keys sys) &&
+                           all (checkVars ctx) (elems sys)
+    Partial phi t       -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx t
+    Restr sys t         -> checkVars ctx (Sys sys) && checkVars ctx t
+    Comp fam phi i0 u b -> checkVars ctx fam {-&& all (`elem` (keys ctx)) (vars phi)-} &&
+        checkVars ctx i0 && checkVars ctx u && checkVars ctx b
 
 checkSingleToplevel :: Toplevel -> StateT ReplState IO Bool
 checkSingleToplevel (Example t) = do
@@ -182,6 +183,9 @@ doRepl = do
                     let ans' = headRed ctx term
                     printLnIO $ show ans'
                     put (ctx,ans',lockedNames)
+        ":conv" : id1 : id2 : zeros -> do
+           printLnIO . show $ conv (keys ctx) (map Ident zeros,[],[]) AlphaEta
+                        (eval ctx (Var $ Ident id1)) (eval ctx (Var $ Ident id2))
         ":clear" : idents -> do
             let ctx' = foldl removeFromCtx ctx (map Ident idents)
             put (ctx',ans,lockedNames)
@@ -204,6 +208,8 @@ doRepl = do
             printLnIO $ "Locked names are: " ++ intercalate ", " (map show lockedNames)
         [":help"] -> do
             liftIO printUsage
+        (':' : _ ) : _ ->
+            printLnIO $ "Command not found. Type :help"
         otherwise -> do
             let ts = myLexer s
             case pToplevel ts of

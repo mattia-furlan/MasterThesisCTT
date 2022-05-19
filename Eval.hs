@@ -29,7 +29,7 @@ lookupType s ((s',entry):ctx) = if s == s' then
         lookupType s ctx
 
 eval :: Ctx -> Term -> Value
-eval ctx t = {-myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx ctx) $-} case t of
+eval ctx t = myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx (filter (\(s,_) -> s `elem` (vars t)) ctx)) $ case t of
     Var s -> case lookup s ctx of
         Nothing -> error $ "[eval] not found var " ++ show s ++ " in ctx"
         Just (Val v)     -> v
@@ -53,16 +53,23 @@ eval ctx t = {-myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx ctx) $-} ca
     I  -> I
     I0 -> I0
     I1 -> I1
-    Sys sys         -> Sys $ evalSystem ctx sys
-    Partial phi t   -> foldPartial (evalDisjFormula ctx phi) (eval ctx t)
-    Restr sys t     -> foldRestr (evalSystem ctx sys) (eval ctx t)
-    Comp fam i0 u b -> doComp (eval ctx fam) (eval ctx i0) (eval ctx u) (eval ctx b)
-    otherwise       -> error $ "[eval] got " ++ show t
+    Sys sys             -> simpl emptyDirEnv (Sys $ evalSystem ctx sys)
+    Partial phi t       -> foldPartial (evalDisjFormula ctx phi) (eval ctx t)
+    Restr sys t         -> foldRestr (evalSystem ctx sys) (eval ctx t)
+    Comp fam phi i0 u b -> 
+        let var    = newVar (keys ctx) (Ident "i")
+            sys    = getCompSys phi i0 u b var
+            compty = Abst var I (Restr sys (App fam (Var var)))
+        in doComp (eval ctx fam) (evalDisjFormula ctx phi) (eval ctx i0)
+            (eval ctx u) (eval ctx b) (eval ctx compty)
+    otherwise           -> error $ "[eval] got " ++ show t
 
 evalConjFormula :: Ctx -> ConjFormula -> Maybe ConjFormula
 evalConjFormula ctx conj = conj'
     where
-        entries     = filter (\(s,v) -> s `elem` (vars conj)) (getBindings ctx)
+        --entries     = filter (\(s,v) -> s `elem` (vars conj)) (getBindings ctx)
+        entries     = nub . reverse $ filter (\(s,v) -> s `elem` (vars conj)) (getBindings ctx)
+        --entries     = concatMap (\v -> case find (( == v) . fst) (getBindings ctx) of Just (s,v) -> [(s,v)] ; Nothing -> []) (vars conj)
         renamings   = concatMap (\case (s,Neutral (Var s') I) -> [(s,s')]; _ -> []) entries
         renamedConj = foldr substConj conj renamings
         vals        = filter (\(s,v) -> v == I0 || v == I1) entries
@@ -148,9 +155,6 @@ doApply (Neutral f fty) arg = let aty = doApply fty arg in
         Restr sys v | any (\(cf,_) -> emptyDirEnv `makesTrueConj` cf) sys ->
             snd . fromJust $ find (\(cf,_) -> emptyDirEnv `makesTrueConj` cf) sys
         otherwise -> Neutral (App (Neutral f fty) arg) aty
-{-doApply (Comp fam i0 u b) arg = case arg of
-    I0 -> b
-    I1 -> Neutral-}
 doApply v arg = error $ "[doApply] got " ++ show v ++ ", " ++ show arg
 
 -- Evaluates nat-induction
@@ -179,21 +183,38 @@ doSnd v = case v of
     Neutral x (Restr _ cl) -> doSnd (Neutral x cl)
     otherwise -> error $ "[doSnd] got " ++ show v
 
-doComp :: Value -> Value -> Value -> Value -> Value
-doComp fam i0 u b = Comp fam i0 u b -- TODO
-{-
-doComp fam@(Closure (Abst i I ty) ctx) u@(Sys sys) =
-    case eval ctx (App ty (Var i)) of
-        --Closure (Sigma s cty dty) ctx1 ->
-        Neutral ty' Universe -> myTrace ("[doComp] Neutral " ++ show ty' ++ " U") $
-            let sys' = map (\(psi,_) -> (psi,App u (Var i))) sys
-            in Neutral (Comp fam u)
-                (Closure (Abst i I (Restr sys' (App ty (Var i)))) ctx)
--}
+doComp :: Value -> DisjFormula -> Value -> Value -> Value -> Value -> Value
+doComp fam phi i0 u b compty = if emptyDirEnv `makesTrueDisj` phi then
+        myTrace ("[doComp] u = " ++ show u) $ u -- doApply u (Neutral (Var $ Ident "") I)
+    else myTrace ("[doComp] " ++ show (Comp fam phi i0 u b)) $
+        Neutral (Comp fam phi i0 u b) compty
+    {-case fam of
+        Neutral clty _ -> Neutral (Comp fam i0 u b) ()
+        Closure (Abst s I ty) ctx ->-}
 
 getNeutralType :: Value -> Value
 getNeutralType (Neutral _ ty) = ty
 getNeutralType v = error $ "[getNeutralType] got non-neutral term " ++ show v
+
+isSimpl :: DirEnv -> Value -> Bool
+isSimpl dirs ty = case ty of
+    Restr sys _ -> isSimplSys dirs sys
+    otherwise   -> False
+
+simplifyValue :: DirEnv -> Value -> Value
+simplifyValue dirs (Restr sys _) = simplifySys dirs sys
+simplifyValue _ v = error $ "[simplifyValue] got " ++ show v
+
+isSimplSys :: DirEnv -> System -> Bool
+isSimplSys dirs sys = any ((dirs `makesTrueConj`) . fst) sys
+
+simplifySys :: DirEnv -> System -> Value
+simplifySys dirs sys = snd . fromJust $
+    find ((dirs `makesTrueConj`) . fst) sys
+
+simpl :: DirEnv -> Value -> Value
+simpl dirs (Sys sys) | isSimplSys dirs sys = simplifySys dirs sys
+simpl dirs v = v
 
 readBack :: [Ident] -> Value -> Term
 readBack used v = case v of
@@ -206,6 +227,8 @@ readBack used v = case v of
     Partial phi ty -> foldPartial phi (readBack used ty)
     Restr sys ty -> foldRestr (mapElems (readBack used) sys) (readBack used ty)
     Ind ty b e n -> Ind (readBack used ty) (readBack used b) (readBack used e) (readBack used n)
+    Comp fam phi i0 u b -> Comp (readBack used fam) phi (readBack used i0)
+        (readBack used u) (readBack used b)
     fun@(Closure cl ctx) -> let
         (constr,s,t,e) = extract cl
         used'   = used ++ keys ctx
@@ -289,10 +312,10 @@ printTerm' i t = case t of
     Sys sys         -> showSystem sys
     Partial phi t   -> "[" ++ show phi ++ "]" ++ printTerm' (i+1) t
     Restr sys t     -> showSystem sys ++ printTerm' (i+1) t
-    Comp fam i0 u b -> par1 ++ "comp " ++ printTerm' (i+1) fam ++ " " ++ printTerm' (i+1) u ++ par2
+    Comp fam phi i0 u b -> par1 ++ "comp " ++ "(" ++ show phi ++ ") " ++ printTerm' (i+1) fam ++ " " ++ printTerm' (i+1) u ++  " " ++ printTerm' (i+1) b ++ par2
     --------
     Closure cl ctx  -> "Cl(" ++ show cl ++ {-"," ++ showCtx ctx ++-} ")"
-    Neutral v t  -> printTerm' i v -- "N{" ++ printTerm' i v {- ++ ":" ++ printTerm' (i+1) t -} ++ "}"
+    Neutral v t  -> printTerm' i v -- "N{" ++ printTerm' i v ++ "}:" ++ printTerm' (i+1) t
     where (par1,par2) = if i == 0 then ("","") else ("(",")")
 
 {-
