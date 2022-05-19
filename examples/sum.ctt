@@ -1,8 +1,8 @@
 idN : N -> U = [x:N]N ;
 
-zero : N = ind idN 0 ([n:N][m:N]0) 0 ;
+zero : N = ind idN Z ([n:N][m:N]Z) Z ;
 
-succ : N -> N = [n : N] ind idN (S 0) ([n':N][m:N]S m) n ;
+succ : N -> N = [n : N] ind idN (S Z) ([n':N][m:N]S m) n ;
 
 plus : N -> N -> N = [m : N][n : N] ind idN m ([n':N][mPlusn:N]S mPlusn) n ;
 
@@ -13,12 +13,12 @@ uncurry : [A:U][B:U][C:U] (A -> B -> C) -> (A * B) -> C =
     [A:U][B:U][C:U][g : A -> B -> C][p: A * B] g (p.1) (p.2) ;
 
 prod : U -> U -> U = [A:U][B:U][x:N] ind ([y:N]U) A ([n:N][p:U]B) x ;
-pi1 : [A:U][B:U] prod A B -> A = [A:U][B:U][p : prod A B] p 0 ;
-pi2 : [A:U][B:U] prod A B -> B = [A:U][B:U][p : prod A B] p (S 0) ;
+pi1 : [A:U][B:U] prod A B -> A = [A:U][B:U][p : prod A B] p Z ;
+pi2 : [A:U][B:U] prod A B -> B = [A:U][B:U][p : prod A B] p (S Z) ;
 couple : [A:U][B:U] A -> B -> prod A B = [A:U][B:U][a:A][b:B][x:N] ind ([y:N]ind ([z:N]U) A ([n:N][p:U]B) y) a ([n:N][p:ind ([w:N]U) A ([m:N][q:U]B) n] b) x;
 
 NpN : U = prod N N ;
-couple13 : NpN = couple N N (S 0) (S (S (S 0))) ;
+couple13 : NpN = couple N N (S Z) (S (S (S Z))) ;
 
 prod2sum : [A:U][B:U] prod A B -> A * B = [A:U][B:U][p : prod A B]
     (pi1 A B p,pi2 A B p) ;
@@ -39,12 +39,12 @@ couple13'' : NpN = couple'' ((N,N)) couple13'.1 couple13'.2 ;
 
 -------------
 
+--These need eta-conversion
 
 AC : [A:U][B:U][C:A -> B -> U]([x:A]<y:B> C x y) -> <f:A -> B>[x:A] C x (f x) = 
     [A:U][B:U][C:A -> B -> U][h : [x:A]<y:B> C x y]
         (([x:A](h x).1),([x:A](h x).2)) ;
 
---This need eta-conversion
 indSigma : [A:U][B:A->U][C:(<x:A>B x)->U]([a:A][b:B a]C((a,b))) -> [p:<x:A>B x]C p =
     [A:U][B:A->U][C:(<x:A>B x)->U][h:[a:A][b:B a]C((a,b))][p:<x:A>B x]
         h p.1 p.2;
@@ -54,4 +54,4 @@ indSigma : [A:U][B:A->U][C:(<x:A>B x)->U]([a:A][b:B a]C((a,b))) -> [p:<x:A>B x]C
 
 i : I ;
 
-rs : [i=0 -> (S 0, S (S 0)) | i = 1 -> couple13'] (N*N) ;
+rs : [i = 0 -> (S Z, S (S Z)) | i = 1 -> couple13'] (N*N) ;

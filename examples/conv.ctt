@@ -19,12 +19,12 @@ g : N -> N ;
 h : N -> N ;
 f : [i = 0 -> g | i = 1 -> h](N -> N) ;
 
-fOK : N = f 0 ;  -- f 0 => [i = 0 -> g 0 | i = 1 -> h 0] N
-fOK' : [i = 0 -> f 0]N = fOK ;
+fOK : N = f Z ;  -- f Z => [i = 0 -> g Z | i = 1 -> h Z] N
+fOK' : [i = 0 -> f Z]N = fOK ;
 
 gU : N -> U = [n:N] ind (N -> U) N (N -> N -> [XX:U]XX) n ;
 fU : [k:I][k = 0 -> gU | k = 1 -> idty](N -> U) ;
 
-sys : [k:I][k = 0 \/ k = 1]U = [k:I][k = 0 -> fU k 0 | k = 1 -> N] ;
+sys : [k:I][k = 0 \/ k = 1]U = [k:I][k = 0 -> fU k Z | k = 1 -> N] ;
 
 test : [i = 0 \/ (i = j /\ i = 1)]U = [i = 0 -> sys i | (i = 1 /\ i = j) -> sys j] ;

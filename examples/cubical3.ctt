@@ -1,0 +1,29 @@
+Path : [A : U] A -> A -> U =
+    [A : U][a0 : A][a1 : A][i : I] [(i = 0) -> a0 | (i = 1) -> a1] A ;
+
+--refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
+
+--I need eta-conversion for this
+
+
+funext : [A:U][B:U][f:A -> B][g:A -> B] ([x:A] Path B (f x) (g x)) -> Path (A -> B) f g = [A:U][B:U][f:A -> B][g:A -> B][p:[x:A] Path B (f x) (g x)]
+    [i:I][x:A] (p x i) ;
+
+
+F : I -> U = [i:I] N ;
+f0 : N ;
+
+c' : I -> N = comp F ([i:I][i = 0 -> f0]) ;
+
+A : U ;
+a : A ;
+b : A ;
+P : A -> U ;
+p : Path A a b ;
+p0 : P a ; 
+
+D : I -> U = [i : I] P (p i); --Its type is NOT Path U (P a) (P b) !
+
+pLift : [i:I][i = 0 -> p0]P (p i) = comp D ([i:I][i = 0 -> p0]);
+
+testLift : [i:I][i = 1]P b = [i:I][i = 1 -> pLift i] ;

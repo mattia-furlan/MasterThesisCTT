@@ -1,21 +1,21 @@
-s : [i:I][i = 0]N = [i:I][(i = 0) -> S 0] ;
+s : [i:I][i = 0]N = [i:I][(i = 0) -> S Z] ;
 
-f : [y:N][i:I][i = 0 \/ i = 1]N = [y:N][i:I][i = 0 -> S y | i = 1 -> 0] ;
+f : [y:N][i:I][i = 0 \/ i = 1]N = [y:N][i:I][i = 0 -> S y | i = 1 -> Z] ;
 
-fd : [y:N][i:I][i = 0 -> S y | i = 1 -> 0]N ;
+fd : [y:N][i:I][i = 0 -> S y | i = 1 -> Z]N ;
 
 i : I ;
 
 fnat : N -> N ;
 fnat' : ([i = 0]N) -> N ;
-n : [i = 0 -> S 0][i = 1 -> S (S 0)] N ;
+n : [i = 0 -> S Z][i = 1 -> S (S Z)] N ;
 m : [i = 0 \/ i = 1]N ;
-k : [i = 0 -> S 0 | i = 1 -> S (S 0)]N ;
+k : [i = 0 -> S Z | i = 1 -> S (S Z)]N ;
 
 {-
 i : I ;
 j : I ;
 
-u : [i = 0 -> 0 | i = 1 -> S 0][j = 0 -> 0]N;
-uwrong : [i = 0 -> 0 | i = 1 -> S 0][i = 0 -> 0]N;
+u : [i = 0 -> Z | i = 1 -> S Z][j = 0 -> Z]N;
+uwrong : [i = 0 -> Z | i = 1 -> S Z][i = 0 -> Z]N;
 -}

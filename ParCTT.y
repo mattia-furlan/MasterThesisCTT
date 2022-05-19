@@ -7,7 +7,9 @@ module ParCTT
   , pProgram
   , pToplevel
   , pTerm
+  , pListTerm
   , pSystem
+  , pConjFormula
   ) where
 
 import Prelude
@@ -24,6 +26,8 @@ import LexCTT
 %name pToplevel Toplevel
 %name pTerm Term
 %name pSystem System
+%name pListTerm ListTerm
+%name pConjFormula ConjFormula
 -- no lexer declaration
 %monad { Err } { (>>=) } { return }
 %tokentype {Token}
@@ -61,17 +65,23 @@ import LexCTT
 Ident :: { Ident }
 Ident  : L_Ident { Ident $1 }
 
+ListIdent :: { [Ident] }
+ListIdent  : Ident { [$1] }
+           | Ident ',' ListIdent { (:) $1 $3 }
+
 Program :: { CoreCTT.Program }
 Program : ListToplevel { CoreCTT.Program $1 }
 
 Term :: { CoreCTT.Term }
 Term : Term1 '->' Term { CoreCTT.Abst (Ident "") $1 $3 }
-     | '[' Ident ':' Term ']' Term { CoreCTT.Abst $2 $4 $6 }
+   --| '[' Ident ':' Term ']' Term { CoreCTT.Abst $2 $4 $6 }
+     | '[' ListIdent ':' Term ']' Term { foldr (\i e -> CoreCTT.Abst i $4 e) $6 $2 }
      | Term1 { $1 }
 
 Term1 :: { CoreCTT.Term }
 Term1 : Term2 '*' Term1 { CoreCTT.Sigma (Ident "") $1 $3 }
-      | '<' Ident ':' Term '>' Term { CoreCTT.Sigma $2 $4 $6 }
+    --| '<' Ident ':' Term '>' Term { CoreCTT.Sigma $2 $4 $6 }
+      | '<' ListIdent ':' Term '>' Term { foldr (\i e -> CoreCTT.Sigma i $4 e) $6 $2 }
       | '[' DisjFormula ']' Term1 { CoreCTT.Partial $2 $4 }
       | System Term1 { CoreCTT.Restr $1 $2 }
       | Term2 ',' Term2 { CoreCTT.Pair $1 $3 }
@@ -80,7 +90,7 @@ Term1 : Term2 '*' Term1 { CoreCTT.Sigma (Ident "") $1 $3 }
 Term2 :: { CoreCTT.Term }
 Term2 : Term2 Term3 { CoreCTT.App $1 $2 }
       | 'ind' Term3 Term3 Term3 Term3 { CoreCTT.Ind $2 $3 $4 $5 }
-      | 'comp' Term3 Term3 Term3 Term3 { CoreCTT.Comp $2 $3 $4 $5 }
+      | 'comp' Term3 '(' DisjFormula ')' Term3 Term3 Term3 { CoreCTT.Comp $2 $4 $6 $7 $8 }
       | 'S' Term3 { CoreCTT.Succ $2 }
       | Term3 { $1 }
 
@@ -97,35 +107,6 @@ Term3 : Ident { CoreCTT.Var $1 }
       | '1' { CoreCTT.I1 }
       | '(' Term ')' { $2 }
 
-{-
-Term :: { CoreCTT.Term }
-Term : Term1 { $1 }
-     | Term1 '->' Term { CoreCTT.Abst (Ident "") $1 $3 }
-     | Term1 '*' Term { CoreCTT.Sigma (Ident "") $1 $3 }
-     | '[' Ident ':' Term ']' Term { CoreCTT.Abst $2 $4 $6 }
-     | '<' Ident ':' Term '>' Term { CoreCTT.Sigma $2 $4 $6 }
-     | '[' DisjFormula ']' Term { CoreCTT.Partial $2 $4 }
-
-Term1 :: { CoreCTT.Term }
-Term1 : Term2 { $1 }
-      | Term1 Term2 { CoreCTT.App $1 $2 }
-      | System Term { CoreCTT.Restr $1 $2 }
-      | 'ind' Term2 Term2 Term2 Term2 { CoreCTT.Ind $2 $3 $4 $5 }
-      | 'comp' DisjFormula Term2 Term2 Term2 { CoreCTT.Comp $2 $3 $4 $5 }
-      | '(' Term1 ',' Term1 ')' { CoreCTT.Pair $2 $4 }
-
-Term2 :: { CoreCTT.Term }
-Term2 : Ident { CoreCTT.Var $1 }
-      | 'U' { CoreCTT.Universe }
-      | 'N' { CoreCTT.Nat }
-      | 'S' Term2 { CoreCTT.Succ $2 }
-      | '0' { CoreCTT.Zero }
-      | 'I' { CoreCTT.I }
-      | Term2 '.1' { CoreCTT.Fst $1 }
-      | Term2 '.2' { CoreCTT.Snd $1 }
-      | System { CoreCTT.Sys $1 }
-      | '(' Term ')' { $2 }
--}
 
 Toplevel :: { CoreCTT.Toplevel }
 Toplevel : Ident ':' Term '=' Term { CoreCTT.Definition $1 $3 $5 }
@@ -166,8 +147,12 @@ SysElem : ConjFormula '->' Term { ($1,$3) }
 
 ListSysElem :: { [(ConjFormula,CoreCTT.Term)] }
 ListSysElem : {- empty -} { [] }
-            | SysElem { (:[]) $1 }
-            | SysElem '|' ListSysElem { (:) $1 $3 }
+            | SysElem { [$1] }
+            | SysElem '|' ListSysElem { $1 : $3 }
+
+ListTerm :: { [CoreCTT.Term] }
+ListTerm  : '[' Term ']' { [$2] }
+          | '[' Term ']' ListTerm { $2 : $4 }
 
 {
 
