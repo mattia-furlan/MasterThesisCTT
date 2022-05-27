@@ -57,7 +57,7 @@ comppq : Path A a c = [i:I] fill i 1;
 
 a0 : N ;
 
-compTest  : I -> N = comp (I -> N) (i = 0 /\ i = 1) 0 (I -> []) a0 ;
+compTest  : I -> N = comp (I -> N) () 0 (I -> []) a0 ;
 --compTest' : [i:I][i = 0 -> a0]N = comp (I -> N) 0 [] a0 ;
 
 
@@ -85,10 +85,21 @@ fTest' : [i:I][i = 0 -> f1 i bV]A = [i : I] f2 i bV ;
 {-
 transport' : [B : U][P : B -> U][x : B][y : B][pB : Path B x y][u : P x][i:I][i = 0 -> u]P (pB i) = 
     [B : U][P : B -> U][x : B][y : B][pB : Path B x y][u : P x]
-        comp ([i : I]P (pB i)) (i = 0 /\ i = 1) 0 (I -> []) u ;
+        comp ([i : I]P (pB i)) () 0 (I -> []) u ;
+-}
 
 transport : [B : U][P : B -> U][x : B][y : B][pB : Path B x y] P x -> P y = 
     [B : U][P : B -> U][x : B][y : B][pB : Path B x y][u : P x]
-        comp ([i : I]P (pB i)) (i = 0 /\ i = 1) 0 (I -> []) u 1;
--}
+        comp ([i : I]P (pB i)) () 0 (I -> []) u 1;
 
+transp : [F : I -> U] F 0 -> F 1 = [F : I -> U][a0 : F 0]
+    comp F () 0 (I -> []) a0 1 ;
+
+
+transport'' : [B : U][P : B -> U][x : B][y : B][pB : Path B x y] P x -> P y = 
+    [B : U][P : B -> U][x : B][y : B][pB : Path B x y][u : P x]
+        transp ([i : I] P (pB i)) u ;
+
+B : I -> U ;
+b0 : B 0 ;
+transpCoupleEx : A * B 1 = transp ([i:I] A * B i) (a,b0) ;

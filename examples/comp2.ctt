@@ -1,0 +1,8 @@
+Path : [A : U] A -> A -> U =
+    [A : U][a0 : A][a1 : A][i : I] [(i = 0) -> a0 | (i = 1) -> a1] A ;
+
+refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
+
+isContr : [A:U]<x:A>([y:A] Path A x y) ;
+
+contrSum : [A:U][x:A][c:Path A x x] Path (<y : A> Path A y y) (x,c) (x,refl A x) ;

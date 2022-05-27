@@ -33,7 +33,7 @@ data Term
     | Sys System
     | Partial DisjFormula Term
     | Restr System Term
-    | Comp Term DisjFormula Term Term Term     -- type fam,i0,u,base
+    | Comp Term DisjFormula Term Term Term     -- type fam,phi,i0,u,base
     {-  For values only: -}
     | Closure Term Ctx   
     | Neutral Value Value          -- value,type
@@ -283,7 +283,8 @@ getMsg :: Bool -> String -> String
 getMsg flag s = if flag then s else ""  
 
 getCompSys :: DisjFormula -> Term -> Term -> Term -> Ident -> System
-getCompSys (Disj df) i0 u b var = (Conj [case i0 of I0 -> Eq0 var; I1 -> Eq1 var; Var i -> Diag var i],b) :
+getCompSys (Disj df) i0 u b var =
+    (Conj [case i0 of I0 -> Eq0 var; I1 -> Eq1 var; Var i -> Diag var i],b) :
     map (\conj -> (conj,App u (Var var))) df
     --TODO semplificare App u (Var var) se possibile
 

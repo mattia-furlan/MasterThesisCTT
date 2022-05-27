@@ -56,12 +56,7 @@ eval ctx t = myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx (filter (\(s,
     Sys sys             -> simpl emptyDirEnv (Sys $ evalSystem ctx sys)
     Partial phi t       -> foldPartial (evalDisjFormula ctx phi) (eval ctx t)
     Restr sys t         -> foldRestr (evalSystem ctx sys) (eval ctx t)
-    Comp fam phi i0 u b -> 
-        let var    = newVar (keys ctx) (Ident "i")
-            sys    = getCompSys phi i0 u b var
-            compty = Abst var I (Restr sys (App fam (Var var)))
-        in doComp (eval ctx fam) (evalDisjFormula ctx phi) (eval ctx i0)
-            (eval ctx u) (eval ctx b) (eval ctx compty)
+    Comp fam phi i0 u b -> doComp ctx fam phi i0 u b
     otherwise           -> error $ "[eval] got " ++ show t
 
 evalConjFormula :: Ctx -> ConjFormula -> Maybe ConjFormula
@@ -137,12 +132,12 @@ evalSystem ctx sys = concatMap (\(phi,t) -> evalConjFormula' phi (eval ctx t)) s
 
 
 extract :: Value -> (Ident -> Term -> Term -> Value,Ident,Term,Term)
-extract (Abst s t e) = (Abst,s,t,e)
+extract (Abst  s t e) = (Abst,s,t,e)
 extract (Sigma s t e) = (Sigma,s,t,e)
-extract v = error $ "[extract] got " ++ show v
+extract v             = error $ "[extract] got " ++ show v
 
 evalClosure :: Value -> Value -> Value
-evalClosure (Closure (Abst s t e) ctx) arg  = eval (if s == Ident "" then ctx else extend ctx s (Val arg)) e
+evalClosure (Closure (Abst  s t e) ctx) arg  = eval (if s == Ident "" then ctx else extend ctx s (Val arg)) e
 evalClosure (Closure (Sigma s t e) ctx) arg = eval (if s == Ident "" then ctx else extend ctx s (Val arg)) e
 evalClosure v arg = error $ "[evalClosure] got non-closure " ++ show v 
 
@@ -183,27 +178,46 @@ doSnd v = case v of
     Neutral x (Restr _ cl) -> doSnd (Neutral x cl)
     otherwise -> error $ "[doSnd] got " ++ show v
 
-doComp :: Value -> DisjFormula -> Value -> Value -> Value -> Value -> Value
-doComp fam phi i0 u b compty = if emptyDirEnv `makesTrueDisj` phi then
-        myTrace ("[doComp] u = " ++ show u) $ u -- doApply u (Neutral (Var $ Ident "") I)
+doComp :: Ctx -> Value -> DisjFormula -> Value -> Value -> Value -> Value
+doComp ctx fam phi i0 u b  =
+    if emptyDirEnv `makesTrueDisj` (evalDisjFormula ctx phi) then
+        eval ctx u
     else myTrace ("[doComp] " ++ show (Comp fam phi i0 u b)) $
-        Neutral (Comp fam phi i0 u b) compty
-    {-case fam of
-        Neutral clty _ -> Neutral (Comp fam i0 u b) ()
-        Closure (Abst s I ty) ctx ->-}
+        let var  = newVar (keys ctx) (Ident "i")
+            var2 = case u of Closure (Abst v _ _) _ -> v
+        in case doApply (eval ctx fam) (Neutral (Var var) I) of
+            Closure (Abst x ty e)  ctx' -> Closure (Abst var I (Abst u1 ty comp)) ctx
+                where
+                    u1 = newVar (keys ctx) (Ident "u")
+                    ut  = Comp (Abst x I ty) fFalse (Var var) (Abst var2 I (Sys [])) (Var u1)
+                    comp = Comp (Abst x I (App ty (App ut (Var x)))) phi (Var var)
+                         u' (App b (App u i0))
+                    --u' = readBack (keys ctx) $ (Abst var2 I (App u (App ut (Var var2))))
+                    u' = (Abst var2 I (App u (App ut (Var var2))))
+            Closure (Sigma x ty e) ctx' -> Closure (Abst var I (Pair (App c0 (Var var)) (App c1 (Var var)))) ctx
+                where
+                    c0 = Comp (Abst x I ty) phi i0 (Abst var2 I (Fst (App u (Var var2)))) (Fst b)
+                    c1 = Comp (Abst x I (App e (App c0 (Var x)))) phi i0
+                        (Abst var2 I (Snd (App u (Var var2)))) (Snd b)
+            --Nat | ->
+            otherwise -> Neutral (Comp (eval ctx fam) (evalDisjFormula ctx phi) (eval ctx i0) (eval ctx u) (eval ctx b)) (eval ctx compty)
+                where
+                    sys = getCompSys phi i0 u b var
+                    compty = Abst var I (Restr sys (App fam (Var var)))
+
 
 getNeutralType :: Value -> Value
 getNeutralType (Neutral _ ty) = ty
 getNeutralType v = error $ "[getNeutralType] got non-neutral term " ++ show v
 
-isSimpl :: DirEnv -> Value -> Bool
-isSimpl dirs ty = case ty of
+isSimplRestr :: DirEnv -> Value -> Bool
+isSimplRestr dirs ty = case ty of
     Restr sys _ -> isSimplSys dirs sys
     otherwise   -> False
 
-simplifyValue :: DirEnv -> Value -> Value
-simplifyValue dirs (Restr sys _) = simplifySys dirs sys
-simplifyValue _ v = error $ "[simplifyValue] got " ++ show v
+simplifyRestr :: DirEnv -> Value -> Value
+simplifyRestr dirs (Restr sys _) = simplifySys dirs sys
+simplifyRestr _ v = error $ "[simplifyValue] got " ++ show v
 
 isSimplSys :: DirEnv -> System -> Bool
 isSimplSys dirs sys = any ((dirs `makesTrueConj`) . fst) sys
@@ -301,7 +315,7 @@ printTerm' i t = case t of
         where (inner,args) = collectApps (App fun arg) []
               printedArgs  = map (printTerm' (i+1)) args
     Nat             -> "N"
-    Zero            -> "0"
+    Zero            -> "Z"
     Succ t          -> par1 ++ "S " ++ printTerm' (i+1) t ++ par2 --if isNum then show (n + 1) else "S" ++ printTerm' (i+1) t
         where (isNum,n) = isNumeral t
     Ind ty b s n    -> par1 ++ "ind-N " ++ printTerm' (i+1) ty ++ " " ++ printTerm' (i+1) b ++ " "

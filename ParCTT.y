@@ -91,6 +91,7 @@ Term2 :: { CoreCTT.Term }
 Term2 : Term2 Term3 { CoreCTT.App $1 $2 }
       | 'ind' Term3 Term3 Term3 Term3 { CoreCTT.Ind $2 $3 $4 $5 }
       | 'comp' Term3 '(' DisjFormula ')' Term3 Term3 Term3 { CoreCTT.Comp $2 $4 $6 $7 $8 }
+      | 'comp' Term3 '(' ')' Term3 Term3 Term3 { CoreCTT.Comp $2 fFalse $5 $6 $7 }
       | 'S' Term3 { CoreCTT.Succ $2 }
       | Term3 { $1 }
 

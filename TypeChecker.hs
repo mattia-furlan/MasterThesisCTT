@@ -92,7 +92,7 @@ inferType ctx dirs t = myTrace ("[inferType]=> t = " ++ show t ++ ", ctx = ..."{
     Comp fam phi@(Disj df) i0 u b -> do
         checkType ctx dirs fam (eval emptyCtx (Abst (Ident "") I Universe)) -- I -> U
         checkType ctx dirs i0 I
-        {-checkDisjFormula ctx phi-}
+        checkDisjFormula ctx phi
         let var = newVar (keys ctx) (Ident "i")
         checkType ctx dirs u (eval ctx (Abst var I (Partial phi (App fam (Var var)))))
         checkType ctx dirs b (eval ctx (App fam i0))
@@ -143,19 +143,6 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
             else
                 extend (extend ctx s (Decl t)) s (Val (Neutral (Var var) tVal))
         checkType ctx' dirs e e1Val
-    {-(Comp fam phi@(Disj df) i0 u b,Closure (Abst x I e) ctx1) -> do
-        checkType ctx dirs fam (eval emptyCtx (Abst (Ident "") I Universe)) -- I -> U
-        checkType ctx dirs i0 I
-        {-checkDisjFormula ctx phi-}
-        let var = newVar (keys ctx) x
-        checkType ctx dirs u (eval ctx (Abst var I (Partial phi (App fam (Var var)))))
-        checkType ctx dirs b (eval ctx (App fam i0))
-        unless (convPartialDisj (keys ctx) phi dirs AlphaEta (eval ctx b) (eval ctx (App u i0))) . Left $
-            "'" ++ show b ++ "' does not agree with '" ++ show (App u i0) ++ "' on " ++ show phi
-        let sys = getCompSys phi i0 u b var
-        --unless (compTypes (keys ctx) dirs (eval (extend ctx var (Decl I)) (Restr sys (App fam (Var var)))) (doApply v (Neutral (Var var) I))) $ Left $
-        unless (conv (keys ctx) dirs AlphaEtaSub (eval (extend ctx var (Decl I)) (Restr sys (App fam (Var var)))) (doApply v (Neutral (Var var) I))) $ Left $
-            "cannot type-check '" ++ show e ++ "' against type '" ++ show v ++ "'"-}
     (Pair p1 p2,Closure (Sigma s1 t1 e1) ctx1) -> do
         let t1Val = eval ctx1 t1
         checkType ctx dirs p1 t1Val
@@ -175,8 +162,11 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
     (Sys sys,Partial phi ty) -> myTrace ("sys = " ++ show sys) $ do
         let psis = keys sys
         mapM_ (checkConjFormula ctx) psis
-        unless (eqFormulas dirs (Disj psis) phi) $
-            Left $ "formulas don't match: got " ++ show (Disj psis) ++ " and " ++ show phi
+        --unless (eqFormulas dirs (Disj psis) phi) $
+        --    Left $ "formulas don't match: got " ++ show (Disj psis) ++ " and " ++ show phi
+        unless (impDisj dirs phi (Disj psis)) $
+            Left $ show phi ++ " does not imply " ++ show (Disj psis)
+
         mapM_ (\(psi,t) -> checkTypePartialConj psi ctx dirs t ty) sys
         let eq_check = all (\((psi1,t1),(psi2,t2)) ->
                 convPartialConj (keys ctx) (psi1 `meet` psi2) dirs AlphaEta (eval ctx t1) (eval ctx t2))
@@ -198,12 +188,14 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
         mapM_ (\(conj,t) -> checkTypePartialConj conj ctx dirs t tyVal) sys
     otherwise -> myTrace ("[checkType-otherwise] e = " ++ show e ++ ", v = " ++ show v) $ do
         ty <- inferType ctx dirs e
-        --unless (compTypes (keys ctx) dirs ty v) $
-        unless (conv (keys ctx) dirs AlphaEtaSub ty v) $
+        unless (conv (keys ctx) dirs AlphaEtaSub ty v) $ --check if `ty` is more general than `v`
             Left $ "type '" ++ show v ++ "' expected, got term '" ++ show e
                 ++ "' of type '" ++ show ty ++ "' instead"
 
+        -- x : [i = 0]N,  x => [i = 0 \/ i = 1]N
+        --      ..v..             ....ty....
 
+{-
 compTypes :: [Ident] -> DirEnv -> Value -> Value -> Bool
 compTypes used dirs ty v = myTrace ("[compTypes] " ++ show ty ++ " ~~ " ++ show v ++ ", dirs = " ++ show dirs) $
     let (iphi,ity) = split ty
@@ -214,6 +206,7 @@ compTypes used dirs ty v = myTrace ("[compTypes] " ++ show ty ++ " ~~ " ++ show 
             otherwise -> True
     in myTrace ("[compTypes] " ++ show (iphi,ity) ++ " ~? " ++ show (vphi,vty)) $
         conv used dirs AlphaEta ity vty && impDisj dirs vphi iphi && syscheck
+-}
 
 checkConjFormula :: Ctx -> ConjFormula -> Either ErrorString ()
 checkConjFormula ctx cf = do
@@ -245,93 +238,6 @@ sameKind (Abst {}) (Abst {}) = True
 sameKind (Sigma {}) (Sigma {}) = True
 sameKind _ _ = False
 
-{-
-unfoldQuant :: Value -> (Value,Value)
-unfoldQuant v@(Closure cl ctx) = (tV, evalClosure v (Neutral (Var s) tV))
-    where (_,s,t,e) = extract cl
-          tV = eval ctx t
-unfoldQuant (Restr sys v) = unfoldQuant v
-unfoldQuant v = error $ "[unfoldQuant] got " ++ show v
--}
-
-{-
-instance Convertible Value where
-    conv used dirs ty v1 v2 = myTrace ("[conv] " ++ show v1 ++ " ~ " ++ show v2 ++ " : " ++ show ty ++ ", dirs = " ++ show dirs) $
-        v1 == v2 || let cnv = conv used dirs in case (v1,v2) of
-            (Closure cl1 ctx1,Closure cl2 ctx2) | sameKind cl1 cl2 -> let
-                (_,s1,t1,e1) = extract cl1
-                (_,s2,t2,e2) = extract cl2
-                var = newVar (used ++ keys ctx2) s1
-                t1V = eval ctx1 t1
-                t2V = eval ctx2 t2
-                e1' = evalClosure v1 (Neutral (Var var) t1V)
-                e2' = evalClosure v2 (Neutral (Var var) t2V)
-                in cnv Universe t1V t2V &&
-                   conv (var : used) dirs (if ty == Universe then Universe else snd $ unfoldQuant ty) e1' e2'
-            (Universe,Universe) -> True
-            {- Sigma types -}
-            (Pair v1 v1',Pair v2 v2') -> let (t1,t2) = unfoldQuant ty
-                in cnv t1 v1 v1' && cnv t2 v2 v2'
-            {- Naturals -}
-            (Nat,Nat)           -> True
-            (Zero,Zero)         -> True
-            (Succ n1,Succ n2)   -> cnv Nat n1 n2
-            {- Cubical -}
-            (I,I)               -> True
-            (Sys sys1,v2) | isSimplSys dirs sys1 ->
-                conv used dirs ty (simplifySys dirs sys1) v2
-            (v1,Sys sys2) | isSimplSys dirs sys2 ->
-                conv used dirs ty v1 (simplifySys dirs sys2)
-            (Sys sys1,Sys sys2) -> conv used dirs ty sys1 sys2
-            (Partial phi1 v1,Partial phi2 v2) -> eqFormulas dirs phi1 phi2 &&
-                cnv Universe v1 v2
-            (Restr sys1 t1,Restr sys2 t2) -> conv used dirs ty sys1 sys2 &&
-                cnv Universe t1 t2
-            {- Neutrals -}
-            (Var s1,Var s2) -> s1 == s2
-            (App (Neutral f1 tf1) a1,App (Neutral f2 tf2) a2) ->
-                cnv Universe tf1 tf2 && cnv tf1 f1 f2 && cnv (fst $ unfoldQuant tf1) a1 a2 
-            {-(Ind ty1@(Closure (Abst n _ _) ctx) b1 s1 n1,Ind ty2 b2 s2 n2) ->
-                cnv Universe ty1 ty2 && cnv Nat b1 b2 &&
-                cnv cltype s1 s2 && cnv Nat n1 n2
-                where
-                    cltype = Closure (Abst n Nat inner) ctx 
-                    nVar   = Var n
-                    ty'    = readBack (keys ctx) ty1
-                    inner  = Abst (Ident "") (App ty' nVar) (App ty' (Succ nVar))-} --TODO
-            (Fst (Neutral v1 sumty1),Fst (Neutral v2 sumty2)) ->
-                cnv Universe sumty1 sumty2 && cnv sumty1 v1 v2
-            (Snd (Neutral v1 sumty1),Snd (Neutral v2 sumty2)) ->
-                cnv Universe sumty1 sumty2 && cnv sumty1 v1 v2
-
-            (Neutral _ ty1,v2) | isSimpl dirs ty1 ->
-                    cnv Universe (simplifyValue dirs ty1) v2
-            (v1,Neutral _ ty2) | isSimpl dirs ty2 ->
-                    cnv Universe v1 (simplifyValue dirs ty2)
-
-            (Neutral (Var x1) I,Neutral (Var x2) I) -> 
-                dirs `makesTrueAtomic` (Diag x1 x2)
-            otherwise -> case ty of -- η conversion
-                Closure (Sigma s t e) ctx -> myTrace "trying η-conv for sums" $ 
-                    cnv (fst $ unfoldQuant ty) (doFst v1) (doFst v2) &&
-                    cnv (snd $ unfoldQuant ty) (doSnd v2) (doSnd v2)
-                Closure (Abst s t e) ctx -> myTrace "trying η-conv for products" $ 
-                    cnv (snd $ unfoldQuant ty) (doApply v1 (Neutral (Var s) tV)) (doApply v2 (Neutral (Var s) tV))
-                    where tV = eval ctx t
-                otherwise -> case (v1,v2) of
-                    (Neutral v1 ty1,Neutral v2 ty2) -> cnv Universe ty1 ty2 && cnv ty1 v1 v2
-                    otherwise -> False
-
-
-instance Convertible System where
-    conv used dirs ty sys1 sys2 =  myTrace ("[convSystem] " ++ showSystem sys1 ++ " ~ " ++ showSystem sys2 ++ ", dirs = " ++ show dirs) $
-        eqFormulas dirs (getSystemFormula sys1) (getSystemFormula sys2) &&
-        all (\(conj,t1,t2) ->
-            convPartialConj used conj dirs ty t1 t2) meets
-        where meets = [(conj1 `meet` conj2, sys1 `at` conj1, sys2 `at` conj2) |
-                        conj1 <- keys sys1, conj2 <- keys sys2]
--}
-
 proofIrrelevant :: DirEnv -> Value -> Bool
 proofIrrelevant dirs ty = case ty of
     Restr sys ty' -> any ((dirs `makesTrueConj`) . fst) sys || proofIrrelevant dirs ty'
@@ -344,6 +250,7 @@ proofIrrelevant dirs ty = case ty of
 instance Convertible Value where
     conv used dirs cmod v1 v2 = myTrace ("[conv-" ++ show cmod ++ "] " ++ show v1 ++ " ~ " ++ show v2 ++ ", dirs = " ++ show dirs)
         v1 == v2 || let cnv = conv used dirs cmod in case (v1,v2) of
+            (Universe,Universe) -> True
             (Closure cl1 ctx1,Closure cl2 ctx2) | sameKind cl1 cl2 -> let
                 (_,s1,t1,e1) = extract cl1
                 (_,s2,t2,e2) = extract cl2
@@ -365,15 +272,14 @@ instance Convertible Value where
                 e2' = evalClosure v2 (Neutral (Var var) t2V)
                 e1' = doApply (simpl dirs v1) (Neutral (Var var) t2V)
                 in conv (var : used) dirs cmod e1' e2'
-            (Universe,Universe) -> True
             {- Sigma types -}
             (Fst v1,Fst v2) -> cnv v1 v2
             (Snd v1,Snd v2) -> cnv v1 v2
             (Pair v1 v1',Pair v2 v2') -> cnv v1 v1' &&
                 cnv v2 v2'
-            (v,Pair v1 v2) -> cnv (doFst v) v1 &&
+            (v,Pair v1 v2) -> cnv (doFst $ simpl dirs v) v1 &&
                 cnv (doSnd $ simpl dirs v) v2
-            (Pair v1 v2,v) -> cnv v1 (doFst v) &&
+            (Pair v1 v2,v) -> cnv v1 (doFst $ simpl dirs v) &&
                 cnv v2 (doSnd $ simpl dirs v)
             {- Naturals -}
             (Nat,Nat)           -> True
@@ -381,16 +287,18 @@ instance Convertible Value where
             (Succ n1,Succ n2)   -> cnv n1 n2
             {- Cubical -}
             (I,I)               -> True
+            (I0,I0)             -> True
+            (I1,I1)             -> True
             (Sys sys1,v2) | isSimplSys dirs sys1 ->
-                cnv (simplifySys dirs sys1) v2
+                cnv (simpl dirs v1) v2
             (v1,Sys sys2) | isSimplSys dirs sys2 ->
-                cnv v1 (simplifySys dirs sys2)
-            (Comp fam1 phi1 i1 u1 b1,v2) | dirs `makesTrueDisj` phi1 ->
+                cnv v1 (simpl dirs v2)
+            (Sys sys1,Sys sys2) -> conv used dirs cmod sys1 sys2
+            {-(Comp fam1 phi1 i1 u1 b1,v2) | dirs `makesTrueDisj` phi1 -> --TODO.. not needed!?
                 cnv u1 v2
             (v1,Comp fam2 phi2 i2 u2 b2) | dirs `makesTrueDisj` phi2 ->
-                cnv v1 u2
-            (Sys sys1,Sys sys2) -> conv used dirs cmod sys1 sys2
-            (Partial phi1 v1,Partial phi2 v2) -> eqFormulas dirs phi1 phi2 &&
+                cnv v1 u2-}
+            (Partial phi1 v1,Partial phi2 v2) | cmod /= AlphaEtaSub -> eqFormulas dirs phi1 phi2 &&
                 cnv v1 v2
             -- (Restr sys1 t1,Restr sys2 t2) | cmod /= AlphaEtaSub -> conv used dirs cmod sys1 sys2 &&
             --     cnv t1 t2
@@ -407,10 +315,10 @@ instance Convertible Value where
             (Comp fam1 phi1 i1 u1 b1,Comp fam2 phi2 i2 u2 b2) ->
                 cnv fam1 fam2 && eqFormulas dirs phi1 phi2 &&
                 cnv i1 i2 && cnv u1 u2 && cnv b1 b2
-            (Neutral _ ty1,v2) | isSimpl dirs ty1 ->
-                    cnv (simplifyValue dirs ty1) v2
-            (v1,Neutral _ ty2) | isSimpl dirs ty2 ->
-                    cnv v1 (simplifyValue dirs ty2)
+            (Neutral _ ty1,v2) | isSimplRestr dirs ty1 ->
+                    cnv (simplifyRestr dirs ty1) v2
+            (v1,Neutral _ ty2) | isSimplRestr dirs ty2 ->
+                    cnv v1 (simplifyRestr dirs ty2)
             (Neutral (Var x1) I,Neutral (Var x2) I) -> 
                 dirs `makesTrueAtomic` (Diag x1 x2)
             (Neutral (Var x1) I,I0) -> 
@@ -421,17 +329,17 @@ instance Convertible Value where
                 dirs `makesTrueAtomic` (Eq0 x2)
             (I1,Neutral (Var x2) I) -> 
                 dirs `makesTrueAtomic` (Eq1 x2)
-            (Neutral v1 ty1,Neutral v2 _) -> 
+            (Neutral v1 ty1,Neutral v2 ty2) -> 
                 proofIrrelevant dirs ty1 || cnv v1 v2
-            otherwise -> cmod == AlphaEtaSub &&
-                let (iphi,ity) = split v1 --ty
+            otherwise -> cmod == AlphaEtaSub &&     -- x : [i = 0]N,  x => [i = 0 \/ i = 1]N                      
+                let (iphi,ity) = split v1 --ty      --      ..v..             ....ty....
                     (vphi,vty) = split v2 --v
-                    syscheck   = {-myTrace ("[compTypes] (iphi,ity) = " ++ show (iphi,ity) ++ ", (vphi,vty) = " ++ show (vphi,vty)) $-} case (v1,v2) of
+                    syscheck   = case (v1,v2) of
                         (Restr isys _,Restr vsys _) ->
                             convPartialDisj used (getSystemFormula vsys) dirs AlphaEta (Sys isys) (Sys vsys)
-                        otherwise -> ity /= v1 || vty /= v2
+                        otherwise -> ity /= v1 || vty /= v2 --at least one must be a partial type/restriction
                     in myTrace ("[compTypes] " ++ show (iphi,ity) ++ " ~? " ++ show (vphi,vty)) $
-                         conv used dirs AlphaEta ity vty {-&& impDisj dirs vphi iphi-} && syscheck
+                         syscheck && conv used dirs AlphaEtaSub ity vty && impDisj dirs vphi iphi --TODO
 
 instance Convertible System where
     conv used dirs cmod sys1 sys2 =
