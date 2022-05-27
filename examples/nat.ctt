@@ -3,25 +3,25 @@
 idU : N -> U = [x:N]U ;
 idN : N -> U = [x:N]N ;
 
-zero : N = ind idN 0 ([n:N][m:N]0) 0 ;
+zero : N = ind idN Z ([n:N][m:N]Z) Z ;
 
-succ : N -> N = [n : N] ind idN (S 0) ([n':N][m:N]S m) n ;
+succ : N -> N = [n : N] ind idN (S Z) ([n':N][m:N]S m) n ;
 
 plus : N -> N -> N = [m : N][n : N] ind idN m ([n':N][mPlusn:N]S mPlusn) n ;
 
-mult : N -> N -> N = [m : N][n : N] ind idN 0 ([n':N][mTimesn:N] plus mTimesn m) n ;
+mult : N -> N -> N = [m : N][n : N] ind idN Z ([n':N][mTimesn:N] plus mTimesn m) n ;
 
-exp : N -> N -> N = [m : N][n : N] ind idN (S 0) ([n':N][mExpn:N] mult mExpn m) n ;
+exp : N -> N -> N = [m : N][n : N] ind idN (S Z) ([n':N][mExpn:N] mult mExpn m) n ;
 
-tetra : N -> N -> N = [m : N][n : N] ind idN (S 0) ([n':N][mTetran:N] exp m mTetran) n ;
+tetra : N -> N -> N = [m : N][n : N] ind idN (S Z) ([n':N][mTetran:N] exp m mTetran) n ;
 
-succ (S (S (S (S 0)))) ;
+succ (S (S (S (S Z)))) ;
 
-plus (S (S (S 0))) (S (S (S 0))) ;
+plus (S (S (S Z))) (S (S (S Z))) ;
 
-mult (S 0) (S 0) ;
+mult (S Z) (S Z) ;
 
-exp (S (S (S 0))) (S (S (S 0))) ;
+exp (S (S (S Z))) (S (S (S Z))) ;
 
 {- Some logic -}
 
@@ -36,7 +36,7 @@ one : U = [A:U] bot -> A ;
 star : one = [A:U][b:bot] b A ;
 
 --Is it provable??
---ind_one : [C:one -> U][h:C star][x:one] C x = 0;
+--ind_one : [C:one -> U][h:C star][x:one] C x = Z;
 
 
 
@@ -44,18 +44,18 @@ star : one = [A:U][b:bot] b A ;
 --Not really, I should use "2" instead of "nat"
 
 prod : U -> U -> U = [A:U][B:U][x:N] ind ([y:N]U) A ([n:N][p:U]B) x ;
-pi1 : [A:U][B:U] prod A B -> A = [A:U][B:U][p : prod A B] p 0 ;
-pi2 : [A:U][B:U] prod A B -> B = [A:U][B:U][p : prod A B] p (S 0) ;
+pi1 : [A:U][B:U] prod A B -> A = [A:U][B:U][p : prod A B] p Z ;
+pi2 : [A:U][B:U] prod A B -> B = [A:U][B:U][p : prod A B] p (S Z) ;
 couple : [A:U][B:U] A -> B -> prod A B = [A:U][B:U][a:A][b:B][x:N] ind ([y:N]ind ([z:N]U) A ([n:N][p:U]B) y) a ([n:N][p:ind ([w:N]U) A ([m:N][q:U]B) n] b) x;
 
 NpN : U = prod N N ;
-couple13 : NpN = couple N N (S 0) (S (S (S 0))) ;
+couple13 : NpN = couple N N (S Z) (S (S (S Z))) ;
 pi1 N N couple13 ;
 pi2 N N couple13 ;
 
 NpNpN : U = prod NpN N ;
-triple135 : NpNpN = couple NpN N couple13 (S (S (S (S (S 0))))) ;
---triple135' : NpNpN = couple NpN N (couple N N (S 0) (exp (S (S (S 0))) (S ([f:N->N]0)(S 0) ))) (plus (S (S (S (S 0)))) (tetra 0 0)) ;
+triple135 : NpNpN = couple NpN N couple13 (S (S (S (S (S Z))))) ;
+--triple135' : NpNpN = couple NpN N (couple N N (S Z) (exp (S (S (S Z))) (S ([f:N->N]Z)(S Z) ))) (plus (S (S (S (S Z)))) (tetra Z Z)) ;
 
 pi1 N N (pi1 NpN N triple135) ;  --reduces to 1
 pi2 N N (pi1 NpN N triple135) ;  --reduces to 3
@@ -89,5 +89,5 @@ p2' : [A:U][B:U] prod' A B -> B = [A:U][B:U][p:prod' A B] p False ;
 --makeCouple : [A:U][B:U] A -> B -> prod A B = [A:U][B:U][a:A][b:B][x:Bool] rec_Bool ([y:Bool] rec_Bool U A B y) a b x ; 
 
 
---trick : [n:N] ind idU N ([m:N][p:U]N) n = [n:N]0 ; --'N' is different from 'ind idU N ([m:N][p:U]N) n'
-trick : [n:N] ind idU N ([m:N][p:U]N) n = [n:N] ind ([n':N] ind idU N ([m:N][p:U]N) n') 0 ([m:N][p:ind idU N ([m':N][p':U]N) m]0) n ;
+--trick : [n:N] ind idU N ([m:N][p:U]N) n = [n:N]Z ; --'N' is different from 'ind idU N ([m:N][p:U]N) n'
+trick : [n:N] ind idU N ([m:N][p:U]N) n = [n:N] ind ([n':N] ind idU N ([m:N][p:U]N) n') Z ([m:N][p:ind idU N ([m':N][p':U]N) m]Z) n ;

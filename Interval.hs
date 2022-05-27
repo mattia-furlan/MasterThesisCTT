@@ -36,18 +36,15 @@ instance Show AtomicFormula where
         Diag s1 s2 -> show s1 ++ " = " ++ show s2
 
 instance Show ConjFormula where
-        show (Conj cf) = if null cf then
-            "True"
-        else
-            intercalate " /\\ " (map show cf)
+    show (Conj cf)
+        | null cf   = "True"
+        | otherwise =  intercalate " /\\ " (map show cf)
 
 instance Show DisjFormula where
-        show disj@(Disj df) = if disj == fFalse then
-            "False"
-        else if disj == fTrue then
-            "True"
-        else
-            intercalate " \\/ " (map (\cf -> "(" ++ show cf ++ ")") df)
+    show disj@(Disj df)
+        | disj == fFalse = "False"
+        | disj == fTrue  = "True"
+        | otherwise      = intercalate " \\/ " $ map (\cf -> "(" ++ show cf ++ ")") df
 
 fTrue :: DisjFormula
 fTrue = Disj [Conj []]
@@ -64,10 +61,9 @@ isFalse = (== fFalse)
 {- Implication and equivalence -}
 
 impDisj :: DirEnv -> DisjFormula -> DisjFormula -> Bool
-impDisj dirs (Disj df1) disj2 = if isFalse (Disj df1) || isTrue disj2 then
-        True
-    else if isFalse disj2 then
-        all (\cf1 -> inconsistent (addConj dirs cf1)) df1
+impDisj dirs (Disj df1) disj2 = isFalse (Disj df1) || isTrue disj2 ||
+    if isFalse disj2 then
+        all (inconsistent . addConj dirs) df1
     else
         all (\cf1 -> (addConj dirs cf1) `makesTrueDisj` disj2) df1
 
@@ -111,26 +107,25 @@ addOne (zeros,ones,diags) s = let
     in (zeros,toadd ++ ones,delete toadd diags)
 
 addDiag :: DirEnv -> Ident -> Ident -> DirEnv
-addDiag dirs@(zeros,ones,diags) s1 s2 =
-    if s1 == s2 then
-        dirs
-    else if s1 `elem` zeros then
-        addZero dirs s2
-    else if s2 `elem` zeros then
-        addZero dirs s1
-    else if s1 `elem` ones then
-        addOne dirs s2
-    else if s2 `elem` ones then
-        addZero dirs s1
-    else let diags' = [if s1 `elem` set then s2 : set else if s2 `elem` set then s1 : set
-                        else set | set <- diags]
-             diags'' = diags' ++  --adding a new partition if s1,s2 are new names (i.e. not found in the partitions list)
-                if not (s1 `elem` (concat diags') || s2 `elem` (concat diags')) then [[s1,s2]] else []
-             par1 = findPartition diags'' s1
-             par2 = findPartition diags'' s2
-             --eventually join the two partitions (ex. [i,k] [j,k,l] gets joined into [i,j,k,l])
-             diags''' = if par1 /= par2 then (delete par2 (delete par1 diags'')) ++ [par1++par2] else diags''
-        in (zeros,ones,diags''')
+addDiag dirs@(zeros,ones,diags) s1 s2
+    | s1 == s2        = dirs
+    | s1 `elem` zeros = addZero dirs s2
+    | s2 `elem` zeros = addZero dirs s1
+    | s1 `elem` ones  = addOne dirs s2
+    | s2 `elem` ones  = addOne dirs s1
+    | otherwise =
+    let diags' = [if s1 `elem` set then s2 : set else if s2 `elem` set then s1 : set
+                else set | set <- diags]
+        diags'' = diags' ++  --adding a new partition if s1,s2 are new names (i.e. not found in the partitions list)
+            if not (s1 `elem` (concat diags') || s2 `elem` (concat diags')) then [[s1,s2]] else []
+        par1 = findPartition diags'' s1
+        par2 = findPartition diags'' s2
+         --eventually join the two partitions (ex. [i,k] [j,k,l] gets joined into [i,j,k,l])
+        diags''' = if par1 /= par2 then
+                delete par2 (delete par1 diags'') ++ [par1 ++ par2]
+            else
+                diags''
+    in (zeros,ones,diags''')
 
 addConj :: DirEnv -> ConjFormula -> DirEnv
 addConj dirs (Conj conj) = foldl addAtomic dirs conj
@@ -143,6 +138,11 @@ addConj dirs (Conj conj) = foldl addAtomic dirs conj
 
 conjToDirEnv :: ConjFormula -> DirEnv
 conjToDirEnv = addConj emptyDirEnv
+
+--Assumes `env` is not inconsistent
+toConj :: DirEnv -> ConjFormula
+toConj env@(zeros,ones,dirs) = Conj $ map (\s -> (Eq0 s)) zeros ++ map (\s -> (Eq1 s)) ones
+    ++ concatMap (\part -> map ((\s -> Diag (head part) s)) $ tail part) dirs
 
 makesTrueAtomic :: DirEnv -> AtomicFormula -> Bool
 dirs@(zeros,ones,diags) `makesTrueAtomic` phi = case phi of

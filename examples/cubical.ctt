@@ -1,15 +1,15 @@
 
---system : [i:I][i = 0 \/ i = 1]N = [i:I][(i=0) -> 0 | (i=1) -> S 0] ;
+--system : [i:I][i = 0 \/ i = 1]N = [i:I][(i=0) -> Z | (i=1) -> S Z] ;
 
--- system' : [i:I][i = 0 \/ i = 1]N = [j:I][(j=0) -> 0 | (j=1) -> S 0] ;
+-- system' : [i:I][i = 0 \/ i = 1]N = [j:I][(j=0) -> Z | (j=1) -> S Z] ;
 
 -- systemI : [i:I][i = 0 \/ i = 1]I = [i:I][(i=0) -> i | (i=1) -> i] ; --rejected OK `I` cannot be codomain
 
--- system' : [i:I][i = 0 \/ i = 1]N = [i:I][i=0 \/ i = 1 -> 0 | i=1 -> S 0] ; --rejected OK terms are not adjacent
+-- system' : [i:I][i = 0 \/ i = 1]N = [i:I][i=0 \/ i = 1 -> Z | i=1 -> S Z] ; --rejected OK terms are not adjacent
 
--- system : [i:I][i = 0]N = [j:I][j=0 -> 0 | j=1 -> S 0] ; --rejected OK formulas don't match
+-- system : [i:I][i = 0]N = [j:I][j=0 -> Z | j=1 -> S Z] ; --rejected OK formulas don't match
 
--- system : [i:I]N = [i:I][i = i -> 0] ;
+-- system : [i:I]N = [i:I][i = i -> Z] ;
 
 
 Path : [A : U] A -> A -> U =
@@ -38,9 +38,9 @@ Pa : P a ;
 Pb : P b ; 
 --test : P (p I0) = a' ;
 
-s1 : [i:I][j:I][i = 0 /\ j = 0 \/ i = 1 /\ j = 1]N = [i:I][j:I][i = 0 /\ j = 0 -> 0 | i = 1 /\ j = 1 -> S 0] ;
+s1 : [i:I][j:I][i = 0 /\ j = 0 \/ i = 1 /\ j = 1]N = [i:I][j:I][i = 0 /\ j = 0 -> Z | i = 1 /\ j = 1 -> S Z] ;
 
-s2 : [i:I][j:I][k:I][i = 0 /\ j = 0 \/ i = 1 /\ k = 0]N = [i:I][j:I][k:I][i = 0 /\ j = 0 -> 0 | i = 1 /\ k = 0 -> S 0] ;
+s2 : [i:I][j:I][k:I][i = 0 /\ j = 0 \/ i = 1 /\ k = 0]N = [i:I][j:I][k:I][i = 0 /\ j = 0 -> Z | i = 1 /\ k = 0 -> S Z] ;
 
 
 p' : Path A a b ;
