@@ -162,8 +162,6 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
     (Sys sys,Partial phi ty) -> myTrace ("sys = " ++ show sys) $ do
         let psis = keys sys
         mapM_ (checkConjFormula ctx) psis
-        --unless (eqFormulas dirs (Disj psis) phi) $
-        --    Left $ "formulas don't match: got " ++ show (Disj psis) ++ " and " ++ show phi
         unless (impDisj dirs phi (Disj psis)) $
             Left $ show phi ++ " does not imply " ++ show (Disj psis)
 
@@ -195,18 +193,6 @@ checkType ctx dirs e v = myTrace ("[checkType]<= e = " ++ show e ++ ", v = " ++ 
         -- x : [i = 0]N,  x => [i = 0 \/ i = 1]N
         --      ..v..             ....ty....
 
-{-
-compTypes :: [Ident] -> DirEnv -> Value -> Value -> Bool
-compTypes used dirs ty v = myTrace ("[compTypes] " ++ show ty ++ " ~~ " ++ show v ++ ", dirs = " ++ show dirs) $
-    let (iphi,ity) = split ty
-        (vphi,vty) = split v
-        syscheck   = myTrace ("[compTypes] (iphi,ity) = " ++ show (iphi,ity) ++ ", (vphi,vty) = " ++ show (vphi,vty)) $ case (ty,v) of
-            (Restr isys _,Restr vsys _) ->
-                convPartialDisj used (getSystemFormula vsys) dirs AlphaEta (Sys isys) (Sys vsys)
-            otherwise -> True
-    in myTrace ("[compTypes] " ++ show (iphi,ity) ++ " ~? " ++ show (vphi,vty)) $
-        conv used dirs AlphaEta ity vty && impDisj dirs vphi iphi && syscheck
--}
 
 checkConjFormula :: Ctx -> ConjFormula -> Either ErrorString ()
 checkConjFormula ctx cf = do
@@ -305,7 +291,6 @@ instance Convertible Value where
             (Restr sys1 t1,Restr sys2 t2) | cmod /= AlphaEtaSub -> cnv t1 t2 &&
                 convPartialDisj used (getSystemFormula sys1) dirs cmod (Sys sys1) (Sys sys2) &&
                 convPartialDisj used (getSystemFormula sys2) dirs cmod (Sys sys2) (Sys sys1)
-                
             {- Neutrals -}
             (Var s1,Var s2) -> s1 == s2
             (App f1 a1,App f2 a2) -> cnv f1 f2 && cnv a1 a2 

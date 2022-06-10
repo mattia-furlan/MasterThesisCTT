@@ -60,6 +60,9 @@ isFalse = (== fFalse)
 
 {- Implication and equivalence -}
 
+eqFalse :: DisjFormula -> Bool
+eqFalse df = impDisj emptyDirEnv df fFalse
+
 impDisj :: DirEnv -> DisjFormula -> DisjFormula -> Bool
 impDisj dirs (Disj df1) disj2 = isFalse (Disj df1) || isTrue disj2 ||
     if isFalse disj2 then

@@ -31,7 +31,7 @@ lookupType s ((s',entry):ctx) = if s == s' then
 eval :: Ctx -> Term -> Value
 eval ctx t = myTrace ("[eval] " ++ show t ++ ", ctx = " ++ showCtx (filter (\(s,_) -> s `elem` (vars t)) ctx)) $ case t of
     Var s -> case lookup s ctx of
-        Nothing -> error $ "[eval] not found var " ++ show s ++ " in ctx"
+        Nothing -> error $ "[eval] not found var `" ++ show s ++ "` in ctx"
         Just (Val v)     -> v
         Just (Decl ty)   -> Neutral (Var s) (eval ctx ty)
         Just (Def ty e)  -> eval ctx e
@@ -184,23 +184,33 @@ doComp ctx fam phi i0 u b  =
         eval ctx u
     else myTrace ("[doComp] " ++ show (Comp fam phi i0 u b)) $
         let var  = newVar (keys ctx) (Ident "i")
-            var2 = case u of Closure (Abst v _ _) _ -> v
+            var2 = case u of Closure (Abst v _ _) _ -> newVar (keys ctx) v
         in case doApply (eval ctx fam) (Neutral (Var var) I) of
-            Closure (Abst x ty e)  ctx' -> Closure (Abst var I (Abst u1 ty comp)) ctx
+            Closure (Abst x ty e)  ctx' -> myTrace ("[doComp-abst]") $ Closure (Abst var I (Abst u1 ty comp)) ctx
                 where
                     u1 = newVar (keys ctx) (Ident "u")
-                    ut  = Comp (Abst x I ty) fFalse (Var var) (Abst var2 I (Sys [])) (Var u1)
-                    comp = Comp (Abst x I (App ty (App ut (Var x)))) phi (Var var)
+                    ut  = Comp (Abst x I ty') fFalse (Var var) (Abst var2 I (Sys [])) (Var u1)
+                    comp = Comp ty1 phi (Var var)
                          u' (App b (App u i0))
-                    --u' = readBack (keys ctx) $ (Abst var2 I (App u (App ut (Var var2))))
-                    u' = (Abst var2 I (App u (App ut (Var var2))))
+                    ty' = readBack (keys ctx) (eval ctx' ty)
+                    e'  = readBack (keys ctx) (eval ctx' e)
+                    ty1 = if x == Ident "" then Abst x I e'
+                        else Abst x I (App e' (App ut (Var x)))
+                    u' = Abst var2 I (App u (App ut (Var var2)))
             Closure (Sigma x ty e) ctx' -> Closure (Abst var I (Pair (App c0 (Var var)) (App c1 (Var var)))) ctx
                 where
-                    c0 = Comp (Abst x I ty) phi i0 (Abst var2 I (Fst (App u (Var var2)))) (Fst b)
-                    c1 = Comp (Abst x I (App e (App c0 (Var x)))) phi i0
-                        (Abst var2 I (Snd (App u (Var var2)))) (Snd b)
+                    c0 = Comp (Abst x I ty') phi i0 u0 (Fst b)
+                    c1 = Comp ty1 phi i0
+                        u1 (Snd b)
+                    ty' = readBack (keys ctx) (eval ctx' ty)
+                    e'  = readBack (keys ctx) (eval ctx' e)
+                    ty1 = if x == Ident "" then Abst x I e'
+                        else Abst x I (App e' (App c0 (Var x)))
+                    (u0,u1) = case eqFalse (evalDisjFormula ctx phi) of
+                        True  -> (u,u)
+                        False -> (Abst var2 I (Fst (App u (Var var2))),Abst var2 I (Snd (App u (Var var2))))
             --Nat | ->
-            otherwise -> Neutral (Comp (eval ctx fam) (evalDisjFormula ctx phi) (eval ctx i0) (eval ctx u) (eval ctx b)) (eval ctx compty)
+            otherwise -> myTrace ("[doComp-neutral]") $ Neutral (Comp (eval ctx fam) (evalDisjFormula ctx phi) (eval ctx i0) (eval ctx u) (eval ctx b)) (eval ctx compty)
                 where
                     sys = getCompSys phi i0 u b var
                     compty = Abst var I (Restr sys (App fam (Var var)))
@@ -326,7 +336,7 @@ printTerm' i t = case t of
     Sys sys         -> showSystem sys
     Partial phi t   -> "[" ++ show phi ++ "]" ++ printTerm' (i+1) t
     Restr sys t     -> showSystem sys ++ printTerm' (i+1) t
-    Comp fam phi i0 u b -> par1 ++ "comp " ++ "(" ++ show phi ++ ") " ++ printTerm' (i+1) fam ++ " " ++ printTerm' (i+1) u ++  " " ++ printTerm' (i+1) b ++ par2
+    Comp fam phi i0 u b -> par1 ++ "comp " ++ printTerm' (i+1) fam ++ " (" ++ show phi ++ ") " ++ printTerm' (i+1) i0 ++ " " ++ printTerm' (i+1) u ++  " " ++ printTerm' (i+1) b ++ par2
     --------
     Closure cl ctx  -> "Cl(" ++ show cl ++ {-"," ++ showCtx ctx ++-} ")"
     Neutral v t  -> printTerm' i v -- "N{" ++ printTerm' i v ++ "}:" ++ printTerm' (i+1) t

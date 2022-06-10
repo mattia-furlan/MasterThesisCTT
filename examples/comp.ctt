@@ -103,3 +103,4 @@ transport'' : [B : U][P : B -> U][x : B][y : B][pB : Path B x y] P x -> P y =
 B : I -> U ;
 b0 : B 0 ;
 transpCoupleEx : A * B 1 = transp ([i:I] A * B i) (a,b0) ;
+
