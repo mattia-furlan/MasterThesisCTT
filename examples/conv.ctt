@@ -2,7 +2,6 @@ zeroEx : [i:I][i = 0 -> Z]N ;
 subEx : [i:I][i = 0 -> Z]N = [i:I]Z ;
 subEx' : [i:I]N = [i:I] zeroEx i ;
 
-
 idty : N -> U = N -> U ;
 Path : [A:U]A -> A -> U = [A:U][a0:A][a1:A][i:I][(i = 0) -> a0 | (i = 1) -> a1]A ;
 refl : [A:U][a:A]Path A a a = [A:U][a:A]I -> a ;
@@ -16,10 +15,20 @@ j : I ;
 c : P (x i) ;
 d : P (x j) ;
 
+failX : [i = 0 \/ i = 1]N ;
+failX2 : [i = 0]N = failX ;
+
 partEx' : N ;
 partEx : [i = 0 -> partEx']N = partEx' ;
 
-sysEx : [i = 0]N = [i = 0 -> Z | i = 1 -> S Z] ;
+sysEx' : [i = 0 \/ i = 1]N = [i = 0 -> Z | i = 1 -> S Z] ;
+sysEx  : [i = 0]N = sysEx' ;
+
+
+sysExR' : [i = 0 -> Z | i = 1 -> S Z]N ;
+sysExR  : [i = 0 -> Z]N = sysExR' ;
+--sysExRF : [i = 0 -> S Z]N = sysExR' ;  --indeed it fails
+sysExRR : [i = 0]N = sysExR' ;
 
 example : [i = j]P(x i) = [i = j -> d] ;
 
@@ -32,7 +41,7 @@ f : [i = 0 -> g | i = 1 -> h](N -> N) ;
 fOK : N = f Z ;  -- f Z => [i = 0 -> g Z | i = 1 -> h Z] N
 fOK' : [i = 0 -> f Z]N = fOK ;
 
-gU : N -> U = [n:N] ind (N -> U) N (N -> N -> [XX:U]XX) n ;
+gU : N -> U = [n:N] ind (N -> U) N (N -> U -> [XX:U]XX) n ;
 fU : [k:I][k = 0 -> gU | k = 1 -> idty](N -> U) ;
 
 sys : [k:I][k = 0 \/ k = 1]U = [k:I][k = 0 -> fU k Z | k = 1 -> N] ;

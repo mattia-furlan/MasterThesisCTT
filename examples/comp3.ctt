@@ -1,0 +1,32 @@
+Path : [A : U] A -> A -> U =
+    [A : U][a0 : A][a1 : A][i : I] [(i = 0) -> a0 | (i = 1) -> a1] A ;
+
+refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
+
+const : [A:U]I -> U = [A:U][i:I]A ;
+
+concat : [A:U][a,b,c:A] Path A a b -> Path A b c -> Path A a c =
+    [A:U][a,b,c:A][p:Path A a b][q:Path A b c]
+        [i:I] comp (const A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> a | i = 1 -> q j]) (p i) 1 ;
+
+transport : [B : U][P : B -> U][x : B][y : B][pB : Path B x y] P x -> P y = 
+    [B : U][P : B -> U][x : B][y : B][pB : Path B x y][u : P x]
+        comp ([i : I]P (pB i)) () 0 (I -> []) u 1;
+
+transp : [F : I -> U] F 0 -> F 1 = [F : I -> U][a0 : F 0]
+    comp F () 0 (I -> []) a0 1 ;
+
+
+transport'' : [B : U][P : B -> U][x : B][y : B][pB : Path B x y] P x -> P y = 
+    [B : U][P : B -> U][x : B][y : B][pB : Path B x y][u : P x]
+        transp ([i : I] P (pB i)) u ;
+
+A : U ;
+B : I -> U ;
+a : A ;
+b0 : B 0 ;
+transpCoupleEx : A * B 1 = transp ([i:I] A * B i) (a,b0) ;
+--transpCoupleEx : A * B 1 = comp ([i:I] A * B i) () 0 (I -> []) (a,b0) 1 ;
+
+f : A -> B 0 ;
+transpFunEx : A -> B 1 = transp ([i:I] A -> B i) f ;
