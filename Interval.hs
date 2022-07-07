@@ -151,7 +151,7 @@ makesTrueAtomic :: DirEnv -> AtomicFormula -> Bool
 dirs@(zeros,ones,diags) `makesTrueAtomic` phi = case phi of
     Eq0 s -> s `elem` zeros
     Eq1 s -> s `elem` ones
-    Diag s1 s2 -> bothIn zeros || bothIn ones || any bothIn diags
+    Diag s1 s2 -> s1 == s2 || bothIn zeros || bothIn ones || any bothIn diags
         where bothIn set = s1 `elem` set && s2 `elem` set
 
 makesTrueConj :: DirEnv -> ConjFormula -> Bool
