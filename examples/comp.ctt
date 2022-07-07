@@ -3,26 +3,24 @@ Path : [A : U] A -> A -> U =
 
 refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
 
+const : [A:U]I -> U = [A:U][i:I]A ;
+
 concat : [A:U][a,b,c:A] Path A a b -> Path A b c -> Path A a c =
     [A:U][a,b,c:A][p:Path A a b][q:Path A b c]
-        [i:I] comp ([ii:I]A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> a | i = 1 -> q j]) (p i) 1;
+        [i:I] comp (const A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> a | i = 1 -> q j]) (p i) 1 ;
 
-concatFill : [A:U][a,b,c:A][p:Path A a b][q:Path A b c][i:I][j:I][j = 0 -> p i | i = 0 -> a | i = 1 -> q j]A =
+concatFill : [A:U][a,b,c:A][p:Path A a b][q:Path A b c][i,j:I][j = 0 -> p i | i = 0 -> a | i = 1 -> q j]A =
     [A:U][a,b,c:A][p:Path A a b][q:Path A b c]
-        [i:I] comp ([ii:I]A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> a | i = 1 -> q j]) (p i) ;
+        [i,j:I] comp (const A) (i = 0 \/ i = 1) 0 ([j':I][i = 0 -> a | i = 1 -> q j']) (p i) j ;
 
 inv : [A:U][a,b:A] Path A a b -> Path A b a = [A:U][a,b:A][p:Path A a b]
-    [i:I] (comp ([ii:I]A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> a]) a 1) ;
+    [i:I] (comp (const A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> a]) a 1) ;
 
-invFill : [A:U][a,b:A][p:Path A a b][i:I][j:I][j = 0 -> a | i = 0 -> p j | i = 1 -> a]A = [A:U][a,b:A][p:Path A a b]
-    [i:I] comp ([ii:I]A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> a]) a ;
+invFill : [A:U][a,b:A][p:Path A a b][i,j:I][j = 0 -> a | i = 0 -> p j | i = 1 -> a]A = [A:U][a,b:A][p:Path A a b]
+    [i,j:I] comp (const A) (i = 0 \/ i = 1) 0 ([j':I][i = 0 -> p j' | i = 1 -> a]) a j ;
 
---invFill' : [A:U][a,b:A][p:Path A a b][i:I] Path A a (inv A a b p i) = [A:U][a,b:A][p:Path A a b]
---    [i:I] comp ([ii:I]A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> a]) a ;
-
-
-invFillrc : [A:U][a,b:A][p:Path A a b][k:I][i:I][k = 0 -> p i | k = 1 -> a | i = 0 -> a]A = [A:U][a,b:A][p:Path A a b]
-    [k:I] comp ([ii:I]A) (k = 0 \/ k = 1) 0 ([i:I][k = 0 -> p i | k = 1 -> a]) a ;
+invFillrc : [A:U][a,b:A][p:Path A a b][k,i:I][k = 0 -> p i | k = 1 -> a | i = 0 -> a]A = [A:U][a,b:A][p:Path A a b]
+    [k,i:I] comp (const A) (k = 0 \/ k = 1) 0 ([i':I][k = 0 -> p i' | k = 1 -> a]) a i ;
 
 
 rc : [A:U][a,b:A][p:Path A a b] Path (Path A a a)
@@ -46,7 +44,7 @@ p : Path A a b ;
 {-
 
 fill : [i,j:I][j = 0 -> p i | i = 0 -> a | i = 1 -> q j]A =
-    [i:I] comp ([ii:I]A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> a | i = 1 -> q j]) (p i);
+    [i:I] comp (const A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> a | i = 1 -> q j]) (p i);
 
 -- fill 0 : [j:I][True -> a]A = [j:I]a ;
 -- fill 1 : [j:I][True -> q j]A = [j:I] q j = q ;
@@ -103,3 +101,4 @@ transport'' : [B : U][P : B -> U][x : B][y : B][pB : Path B x y] P x -> P y =
 B : I -> U ;
 b0 : B 0 ;
 transpCoupleEx : A * B 1 = transp ([i:I] A * B i) (a,b0) ;
+

@@ -23,6 +23,11 @@ data Term
     | Pair Term Term
     | Fst Term
     | Snd Term
+    {- Coproducts -}
+    | Sum Term Term
+    | InL Term
+    | InR Term
+    | Split Term Term Term Term
     {- Naturals -}
     | Nat
     | Zero
@@ -33,7 +38,7 @@ data Term
     | Sys System
     | Partial DisjFormula Term
     | Restr System Term
-    | Comp Term DisjFormula Term Term Term     -- type fam,phi,i0,u,base
+    | Comp Term DisjFormula Term Term Term Term    -- type fam,phi,i0,u,base,i
     {-  For values only: -}
     | Closure Term Ctx   
     | Neutral Value Value          -- value,type
@@ -88,49 +93,57 @@ instance SyntacticObject System where
 
 instance SyntacticObject Term where
     vars t = case t of
-        Var s               -> [s]
-        Universe            -> []
-        Abst s t e          -> vars t ++ vars e
-        App fun arg         -> vars fun ++ vars arg
-        Sigma s t e         -> vars t ++ vars e
-        Pair t1 t2          -> vars t1 ++ vars t2
-        Fst t               -> vars t
-        Snd t               -> vars t
-        Nat                 -> []
-        Zero                -> []
-        Succ t              -> vars t
-        Ind ty b s n        -> vars ty ++ vars b ++ vars s ++ vars n
-        I                   -> []
-        I0                  -> []
-        I1                  -> []
-        Sys sys             -> vars sys
-        Partial phi t       -> vars phi ++ vars t
-        Restr sys t         -> vars sys ++ vars t
-        Comp fam phi i0 u b -> vars fam ++ vars phi ++ vars i0 ++ vars u ++ vars b
-        Closure t ctx       -> vars t ++ keys ctx
-        Neutral v _         -> vars t
+        Var s                 -> [s]
+        Universe              -> []
+        Abst s t e            -> vars t ++ vars e
+        App fun arg           -> vars fun ++ vars arg
+        Sigma s t e           -> vars t ++ vars e
+        Pair t1 t2            -> vars t1 ++ vars t2
+        Fst t                 -> vars t
+        Snd t                 -> vars t
+        Sum ty1 ty2           -> vars ty1 ++ vars ty2
+        InL t1                -> vars t1
+        InR t2                -> vars t2
+        Split x ty f1 f2      -> vars x ++ vars ty ++ vars f1 ++ vars f2 
+        Nat                   -> []
+        Zero                  -> []
+        Succ t                -> vars t
+        Ind ty b s n          -> vars ty ++ vars b ++ vars s ++ vars n
+        I                     -> []
+        I0                    -> []
+        I1                    -> []
+        Sys sys               -> vars sys
+        Partial phi t         -> vars phi ++ vars t
+        Restr sys t           -> vars sys ++ vars t
+        Comp fam phi i0 u b i -> vars fam ++ vars phi ++ vars i0 ++ vars u ++ vars b ++ vars i
+        Closure t ctx         -> vars t ++ keys ctx
+        Neutral v _           -> vars t
     freeVars t = case t of
-        Var s               -> [s]
-        Universe            -> []
-        Abst s t e          -> freeVars t ++ filter (/= s) (freeVars e)
-        App fun arg         -> freeVars fun ++ freeVars arg
-        Sigma s t e         -> freeVars t ++ filter (/= s) (freeVars e)
-        Pair t1 t2          -> freeVars t1 ++ freeVars t2
-        Fst t               -> freeVars t
-        Snd t               -> freeVars t
-        Nat                 -> []
-        Zero                -> []
-        Succ t              -> freeVars t
-        Ind ty b s n        -> freeVars ty ++ freeVars b ++ freeVars s ++ freeVars n
-        I                   -> []
-        I0                  -> []
-        I1                  -> []
-        Sys sys             -> freeVars sys
-        Partial phi t       -> freeVars phi ++ freeVars t
-        Restr sys t         -> freeVars sys ++ freeVars t
-        Comp fam phi i0 u b -> freeVars fam ++ freeVars phi ++ freeVars i0 ++ freeVars u ++ freeVars b
-        Closure t ctx       -> freeVars t ++ keys ctx
-        Neutral v _         -> freeVars v
+        Var s                 -> [s]
+        Universe              -> []
+        Abst s t e            -> freeVars t ++ filter (/= s) (freeVars e)
+        App fun arg           -> freeVars fun ++ freeVars arg
+        Sigma s t e           -> freeVars t ++ filter (/= s) (freeVars e)
+        Pair t1 t2            -> freeVars t1 ++ freeVars t2
+        Fst t                 -> freeVars t
+        Snd t                 -> freeVars t
+        Sum ty1 ty2           -> freeVars ty1 ++ freeVars ty2
+        InL t1                -> freeVars t1
+        InR t2                -> freeVars t2
+        Split x ty f1 f2      -> freeVars x ++ freeVars ty ++ freeVars f1 ++ freeVars f2 
+        Nat                   -> []
+        Zero                  -> []
+        Succ t                -> freeVars t
+        Ind ty b s n          -> freeVars ty ++ freeVars b ++ freeVars s ++ freeVars n
+        I                     -> []
+        I0                    -> []
+        I1                    -> []
+        Sys sys               -> freeVars sys
+        Partial phi t         -> freeVars phi ++ freeVars t
+        Restr sys t           -> freeVars sys ++ freeVars t
+        Comp fam phi i0 u b i -> freeVars fam ++ freeVars phi ++ freeVars i0 ++ freeVars u ++ freeVars b ++ freeVars i
+        Closure t ctx         -> freeVars t ++ keys ctx
+        Neutral v _           -> freeVars v
 
 instance SyntacticObject AtomicFormula where
     vars af = case af of
@@ -149,30 +162,35 @@ instance SyntacticObject DisjFormula where
 
 checkTermShadowing :: [Ident] -> Term -> Bool
 checkTermShadowing vars t = case t of
-    Var s               -> True
-    Universe            -> True
-    Abst (Ident "") t e -> checkTermShadowing vars t && checkTermShadowing vars e
-    Abst s t e          -> s `notElem` vars &&
+    Var s                 -> True
+    Universe              -> True
+    Abst (Ident "") t e   -> checkTermShadowing vars t && checkTermShadowing vars e
+    Abst s t e            -> s `notElem` vars &&
         checkTermShadowing vars t && checkTermShadowing (if s == Ident "" then vars else s : vars) e 
-    App fun arg         -> checkTermShadowing vars fun && checkTermShadowing vars arg
-    Sigma s t e         -> s `notElem` vars &&
+    App fun arg           -> checkTermShadowing vars fun && checkTermShadowing vars arg
+    Sigma s t e           -> s `notElem` vars &&
         checkTermShadowing vars t && checkTermShadowing (if s == Ident "" then vars else s : vars) e 
-    Pair t1 t2          -> checkTermShadowing vars t1 && checkTermShadowing vars t2
-    Fst t               -> checkTermShadowing vars t
-    Snd t               -> checkTermShadowing vars t
-    Nat                 -> True
-    Zero                -> True
-    Succ n              -> checkTermShadowing vars n
-    Ind ty b s n        -> checkTermShadowing vars ty && checkTermShadowing vars b &&
+    Pair t1 t2            -> checkTermShadowing vars t1 && checkTermShadowing vars t2
+    Fst t                 -> checkTermShadowing vars t
+    Snd t                 -> checkTermShadowing vars t
+    Sum ty1 ty2           -> checkTermShadowing vars ty1 && checkTermShadowing vars ty2
+    InL t1                -> checkTermShadowing vars t1
+    InR t2                -> checkTermShadowing vars t2
+    Split x ty f1 f2      -> checkTermShadowing vars x && checkTermShadowing vars ty &&
+        checkTermShadowing vars f1 && checkTermShadowing vars f2 
+    Nat                   -> True
+    Zero                  -> True
+    Succ n                -> checkTermShadowing vars n
+    Ind ty b s n          -> checkTermShadowing vars ty && checkTermShadowing vars b &&
         checkTermShadowing vars s && checkTermShadowing vars n
-    I                   -> True
-    I0                  -> True
-    I1                  -> True
-    Sys sys             -> all (checkTermShadowing vars) (elems sys)
-    Partial phi t       -> checkTermShadowing vars t
-    Restr sys t         -> all (checkTermShadowing vars) (elems sys) && checkTermShadowing vars t
-    Comp fam phi i0 u b -> checkTermShadowing vars fam && checkTermShadowing vars i0 &&
-        checkTermShadowing vars u && checkTermShadowing vars b
+    I                     -> True
+    I0                    -> True
+    I1                    -> True
+    Sys sys               -> all (checkTermShadowing vars) (elems sys)
+    Partial phi t         -> checkTermShadowing vars t
+    Restr sys t           -> all (checkTermShadowing vars) (elems sys) && checkTermShadowing vars t
+    Comp fam phi i0 u b i -> checkTermShadowing vars fam && checkTermShadowing vars i0 &&
+        checkTermShadowing vars u && checkTermShadowing vars b && checkTermShadowing vars i
 
 
 {- Printing functions are in 'Eval.hs' -}
@@ -281,12 +299,6 @@ split v = case v of
 
 getMsg :: Bool -> String -> String
 getMsg flag s = if flag then s else ""  
-
-getCompSys :: DisjFormula -> Term -> Term -> Term -> Ident -> System
-getCompSys (Disj df) i0 u b var =
-    (Conj [case i0 of I0 -> Eq0 var; I1 -> Eq1 var; Var i -> Diag var i],b) :
-    map (\conj -> (conj,App u (Var var))) df
-    --TODO semplificare App u (Var var) se possibile
 
 {- State monad for type-checking and evaluation -}
 

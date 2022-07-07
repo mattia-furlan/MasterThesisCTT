@@ -1,0 +1,84 @@
+Path : [A : U] A -> A -> U =
+    [A : U][a0 : A][a1 : A][i : I] [(i = 0) -> a0 | (i = 1) -> a1] A ;
+
+refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
+
+i : I ;
+
+unit : U = [i = i -> Z]N ;
+
+tt : unit = Z ;
+
+unitInd : [C:unit -> U] C tt -> [x:unit] C x 
+ = [C:unit -> U][p: C tt][x:unit] p ;
+
+unitEq : [x:unit] Path unit tt x
+ = [x:unit] unitInd ([y:unit] Path unit tt y) (refl unit tt) x ;
+
+
+bool : U = unit + unit ;
+
+false : bool = inl tt ;
+true : bool = inr tt ;
+
+boolInd : [C:bool -> U] C false -> C true -> [x:bool] C x 
+ = [C:bool -> U][cf:C false][ct:C true][x:bool]
+   split x C ([u:unit] unitInd ([u':unit] C (inl u')) cf u) ([u:unit] unitInd ([u':unit] C (inr u')) ct u) ;
+
+boolRec : [C:U] bool -> C -> C -> C
+ = [C:U][x:bool][ift:C][iff:C] boolInd (bool -> C) iff ift x ;
+
+If : [C:U] bool -> C -> C -> C = boolRec ;
+
+not : bool -> bool
+ = [b:bool] If bool b false true ;
+
+and : bool -> bool -> bool
+ = [b1,b2:bool] If bool b1 b2 false ;
+
+or : bool -> bool -> bool
+ = [b1,b2:bool] not (and (not b1) (not b2)) ;
+
+nat_eq : N -> N -> bool
+ = [m:N] ind (N -> N -> bool) ([n:N] ind (N -> bool) true (N -> bool -> false) n)
+     ([m':N][IH:N -> bool][n:N] ind (N -> bool) false ([n':N] bool -> IH n') n) m;
+
+nat_neq : N -> N -> bool
+ = [m,n:N] not (nat_eq m n) ;
+
+nat_leq : N -> N -> bool
+ = [m:N] ind (N -> N -> bool) (N -> true)
+     ([m':N][IH:N -> bool][n:N] ind (N -> bool) false ([n':N] bool -> IH n') n) m;
+
+nat_le : N -> N -> bool
+ = [m,n:N] and (nat_leq m n) (nat_neq m n) ;
+
+empty : U = [X:U] X ;
+
+emptyRec : [C:empty -> U][z:empty] C z 
+ = [C:empty -> U][z:empty] z (C z) ;
+
+finiteSet : N -> U
+ = [n : N] ind (N -> U) empty ([m:N][mFin:U] mFin + unit) n ;
+
+
+Fin : N -> U
+ = [n:N] <k:N> If U (nat_leq k n) unit empty ;
+
+zero_one : Fin (S Z) = Z,tt ;
+zero_two : Fin (S (S Z)) = Z,tt ;
+one_two  : Fin (S (S Z)) = S Z,tt ;
+
+fcomp : [A,B,C:U][f:B -> C][g:A -> B] A -> C
+ = [A,B,C:U][f:B -> C][g:A -> B][a:A] f (g a) ;
+
+id : [A:U] A -> A = [A:U][x:A] x ;
+
+isEquiv : [A,B:U] (A -> B) -> U
+ = [A,B:U][f:A -> B] (<g:B -> A> Path (B -> B) (fcomp B A B f g) (id B)) * (<h:B -> A> Path (A -> A) (fcomp A B A h f) (id A)) ;
+
+equiv : U -> U -> U
+ = [A,B:U]<f:A -> B> isEquiv A B f;
+
+Lemma_2_4_12a : [A:U] isEquiv A A (id A)
+ = [A:U] (id A,refl (A -> A) (id A)),(id A,refl (A -> A) (id A)) ;

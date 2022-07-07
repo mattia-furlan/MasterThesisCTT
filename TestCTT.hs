@@ -55,27 +55,31 @@ checkProgram (Program (toplevel : decls)) = do
 --Checks if a term contains undeclared variables (True = OK)
 checkVars :: Ctx -> Term -> Bool
 checkVars ctx t = case t of
-    Var s               -> isJust $ lookup s ctx
-    Universe            -> True
-    Abst s t e          -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
-    App fun arg         -> checkVars ctx fun && checkVars ctx arg 
-    Sigma s t e         -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
-    Pair t1 t2          -> checkVars ctx t1 && checkVars ctx t2
-    Fst t               -> checkVars ctx t
-    Snd t               -> checkVars ctx t
-    Nat                 -> True
-    Zero                -> True
-    Succ t              -> checkVars ctx t
-    Ind ty b s n        -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
-    I                   -> True
-    I0                  -> True
-    I1                  -> True
-    Sys sys             -> all (\phi -> all (`elem` keys ctx) (vars phi)) (keys sys) &&
-                           all (checkVars ctx) (elems sys)
-    Partial phi t       -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx t
-    Restr sys t         -> checkVars ctx (Sys sys) && checkVars ctx t
-    Comp fam phi i0 u b -> checkVars ctx fam {-&& all (`elem` (keys ctx)) (vars phi)-} &&
-        checkVars ctx i0 && checkVars ctx u && checkVars ctx b
+    Var s                 -> isJust $ lookup s ctx
+    Universe              -> True
+    Abst s t e            -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
+    App fun arg           -> checkVars ctx fun && checkVars ctx arg 
+    Sigma s t e           -> checkVars ctx t && checkVars (extend ctx s (Decl {-dummy-}Universe)) e
+    Pair t1 t2            -> checkVars ctx t1 && checkVars ctx t2
+    Fst t                 -> checkVars ctx t
+    Snd t                 -> checkVars ctx t
+    Sum ty1 ty2           -> checkVars ctx ty1 && checkVars ctx ty2
+    InL t1                -> checkVars ctx t1
+    InR t2                -> checkVars ctx t2
+    Split x ty f1 f2      -> checkVars ctx x && checkVars ctx ty && checkVars ctx f1 && checkVars ctx f2 
+    Nat                   -> True
+    Zero                  -> True
+    Succ t                -> checkVars ctx t
+    Ind ty b s n          -> checkVars ctx ty && checkVars ctx b && checkVars ctx s && checkVars ctx n
+    I                     -> True
+    I0                    -> True
+    I1                    -> True
+    Sys sys               -> all (\phi -> all (`elem` keys ctx) (vars phi)) (keys sys) &&
+                             all (checkVars ctx) (elems sys)
+    Partial phi t         -> all (`elem` (keys ctx)) (vars phi) && checkVars ctx t
+    Restr sys t           -> checkVars ctx (Sys sys) && checkVars ctx t
+    Comp fam phi i0 u b i -> checkVars ctx fam {-&& all (`elem` (keys ctx)) (vars phi)-} &&
+        checkVars ctx i0 && checkVars ctx u && checkVars ctx b && checkVars ctx i
 
 checkSingleToplevel :: Toplevel -> StateT ReplState IO Bool
 checkSingleToplevel (Example t) = do
@@ -125,7 +129,7 @@ checkSingleToplevel' (Example t) = do
            liftIO $ showErr err
            return False
         Right tyVal -> do
-            printLnIO $ "\n'" ++ show t ++ "' has (inferred) type '" ++ show tyVal ++ "'"
+            printLnIO $ "\n'" ++ show t ++ "' has (inferred) type '" ++ show (readBack (keys ctx) tyVal) ++ "'"
             let norm = normalize ctx t --since 't' typechecks, 't' must have a normal form
             printLnIO $ "'" ++ show t ++ "' reduces to '" ++ show norm ++ "'"
             --printLnIO $ "'" ++ show t ++ "' evaluates to '" ++ show (eval ctx t) ++ "'"
@@ -184,7 +188,7 @@ doRepl = do
                     printLnIO $ show ans'
                     put (ctx,ans',lockedNames)
         ":conv" : id1 : id2 : zeros -> do
-           printLnIO . show $ conv (keys ctx) (map Ident zeros,[],[]) AlphaEta
+           printLnIO . show $ conv (keys ctx) (map Ident zeros,[],[])
                         (eval ctx (Var $ Ident id1)) (eval ctx (Var $ Ident id2))
         ":clear" : idents -> do
             let ctx' = foldl removeFromCtx ctx (map Ident idents)
