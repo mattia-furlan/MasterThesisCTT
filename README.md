@@ -6,7 +6,7 @@
 
 ## Usage
 
-`./TestCTT file1.ctt file2.ctt ... fileN.ctt`
+`./CTT file1.ctt file2.ctt ... fileN.ctt`
 
 The program loads and type-checks the files, then it starts a REPL.
 
