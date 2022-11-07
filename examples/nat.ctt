@@ -5,9 +5,9 @@ idN : N -> U = [x:N]N ;
 
 zero : N = ind idN Z ([n:N][m:N]Z) Z ;
 
-succ : N -> N = [n : N] ind idN (S Z) ([n':N][m:N]S m) n ;
+succ : N -> N = [n : N] ind idN (S Z) ([n':N][m:N] S m) n ;
 
-plus : N -> N -> N = [m : N][n : N] ind idN m ([n':N][mPlusn:N]S mPlusn) n ;
+plus : N -> N -> N = [m : N][n : N] ind idN m ([n':N][mPlusn:N] S mPlusn) n ;
 
 mult : N -> N -> N = [m : N][n : N] ind idN Z ([n':N][mTimesn:N] plus mTimesn m) n ;
 
@@ -23,6 +23,7 @@ mult (S Z) (S Z) ;
 
 exp (S (S (S Z))) (S (S (S Z))) ;
 
+
 {- Some logic -}
 
 bot : U = [X:U]X ;
@@ -31,9 +32,9 @@ neg : U -> U = [A:U] A -> U ;
 
 ind_bot : [A:U] bot -> A = [A:U][b:bot] b A ;
 
-one : U = [A:U] bot -> A ;
+--one : U = [A:U] bot -> A ;
 
-star : one = [A:U][b:bot] b A ;
+--star : one = [A:U][b:bot] b A ;
 
 --Is it provable??
 --ind_one : [C:one -> U][h:C star][x:one] C x = Z;
@@ -61,8 +62,8 @@ pi1 N N (pi1 NpN N triple135) ;  --reduces to 1
 pi2 N N (pi1 NpN N triple135) ;  --reduces to 3
 pi2 NpN N triple135 ;            --reduces to 5
 
-OpN : U = prod one N ;
-extract_OpN : [f:OpN -> N] N -> N = [f:OpN -> N][n:N] f (couple one N star n) ;
+--OpN : U = prod one N ;
+--extract_OpN : [f:OpN -> N] N -> N = [f:OpN -> N][n:N] f (couple one N star n) ;
 
 
 {- Booleans -}

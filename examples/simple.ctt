@@ -1,0 +1,18 @@
+
+
+A : U ;
+B : U ;
+a : A ;
+b : B ;
+
+c1 : A * B ;
+c2 : A * B ;
+i : I;
+
+c3 : [i = 0 -> c1 | i = 1 -> c2](A * B) ;
+
+-- These shall not be accepted, as it makes no sense to write iterated systems,
+-- and if I use a variable for the inner system, it already has to type-check,
+-- which excludes these "wrong" inner systems
+-- T : [i = 0 -> N | i = 1 -> N * ([i = 0 -> Z | i = 1 -> N])]U ;
+-- t : [i = 0 -> [i = 0 -> S Z | i = 1 -> N]]N ;

@@ -1,0 +1,49 @@
+Path : [A : U] A -> A -> U =
+    [A : U][a0 : A][a1 : A][i : I] [(i = 0) -> a0 | (i = 1) -> a1] A ;
+
+refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
+
+const : [A:U]I -> U = [A:U][i:I]A ;
+
+ii : I ;
+
+unit : U = [ii = ii -> Z]N ;
+
+tt : unit = Z ;
+
+unitInd : [C:unit -> U] C tt -> [x:unit] C x 
+ = [C:unit -> U][p: C tt][x:unit] p ;
+
+unitEq : [x:unit] Path unit tt x
+ = [x:unit] unitInd ([y:unit] Path unit tt y) (refl unit tt) x ;
+
+transp : [F : I -> U] F 0 -> F 1 = [F : I -> U][a0 : F 0]
+    comp F () 0 (I -> []) a0 1 ;
+
+bool : U = unit + unit ;
+
+false : bool = inl tt ;
+true : bool = inr tt ;
+
+boolInd : [C:bool -> U] C false -> C true -> [x:bool] C x 
+ = [C:bool -> U][cf:C false][ct:C true][x:bool]
+   split C ([u:unit] unitInd ([u':unit] C (inl u')) cf u) ([u:unit] unitInd ([u':unit] C (inr u')) ct u) x ;
+
+boolRec : [C:U] C -> C -> bool -> C
+ = [C:U][iff:C][ift:C][x:bool] boolInd (bool -> C) iff ift x ;
+
+A : U ;
+i : I ;
+f : [i = 0](A -> N) ;
+a : [i = 0 \/ i = 1]A ;
+
+
+adt : U = unit + (bool * N) + ((N -> N) * bool * N) ;
+
+adt1 : adt = inl tt ;
+adt2 : adt = inr (inl (true,S Z)) ;
+adt3 : adt = inr (inr ((N -> S (S Z)),(false,Z))) ;
+
+g : N -> N ;
+adt3' : adt = inr (inr (g,(false,Z))) ;
+

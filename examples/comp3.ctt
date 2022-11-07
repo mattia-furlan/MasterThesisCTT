@@ -26,7 +26,80 @@ B : I -> U ;
 a : A ;
 b0 : B 0 ;
 transpCoupleEx : A * B 1 = transp ([i:I] A * B i) (a,b0) ;
---transpCoupleEx : A * B 1 = comp ([i:I] A * B i) () 0 (I -> []) (a,b0) 1 ;
 
 f : A -> B 0 ;
 transpFunEx : A -> B 1 = transp ([i:I] A -> B i) f ;
+
+
+P : I -> U ;
+f' : (A -> B 0) -> P 0 ;
+transpFunEx' : (A -> B 1) -> P 1 = transp ([i:I] (A -> B i) -> P i) f' ;
+
+f'' : A -> (B 0 -> P 0) ;
+transpFunEx'' : A -> (B 1 -> P 1) = transp ([i:I] A -> (B i -> P i)) f'' ;
+
+
+h : B 0 -> P 0 ;
+g : B 0 -> (P 0 * A) = [b0' : B 0] (h b0',a) ;
+tce : A * (B 1 -> (P 1 * A)) = transp ([i:I] A * (B i -> (P i * A))) (a,g) ;
+b1 : B 1 ;
+tce ;              -- has (inferred) type 'A * (B 1 -> (P 1 * A))'
+tce.2 ;            -- has (inferred) type '(B 1 -> (P 1 * A))'
+(tce.2) b1 ;       -- has (inferred) type 'A * P 1'
+((tce.2) b1).1 ;   -- has (inferred) type 'A'
+((tce.2) b1).2 ;   -- has (inferred) type 'P 1'
+
+
+D : I -> U ;
+d0 : D 0 ;
+db0 : D 0 + B 0 = inl d0 ;
+
+db1 : D 1 + B 1 = transp ([i:I] D i + B i) db0 ;
+
+j : I ;
+d0' : [i:I][i = 0 -> d0] D i ;
+d0'' : [i:I][i = 0 -> d0] D i ;
+
+comp ([k:I] D k + B k) (j = 0 \/ j = 1) 0 ([z:I][j = 0 -> inl (d0' z) | j = 1 -> inl (d0'' z)]) db0  1 ;
+-- inferred type '[j = 0 -> inl (d0' 1)| j = 1 -> inl (d0'' 1)] ((D 1) + (B 1))'
+
+
+
+
+
+ii : I ;
+
+unit : U = [ii = ii -> Z]N ;
+
+tt : unit = Z ;
+
+unitInd : [C:unit -> U] C tt -> [x:unit] C x 
+ = [C:unit -> U][p: C tt][x:unit] p ;
+
+unitEq : [x:unit] Path unit tt x
+ = [x:unit] unitInd ([y:unit] Path unit tt y) (refl unit tt) x ;
+
+
+bool : U = unit + unit ;
+
+false : bool = inl tt ;
+true : bool = inr tt ;
+
+boolInd : [C:bool -> U] C false -> C true -> [x:bool] C x 
+ = [C:bool -> U][cf:C false][ct:C true][x:bool]
+   split C ([u:unit] unitInd ([u':unit] C (inl u')) cf u) ([u:unit] unitInd ([u':unit] C (inr u')) ct u) x ;
+
+boolRec : [C:U] C -> C -> bool -> C
+ = [C:U][iff:C][ift:C][x:bool] boolInd (bool -> C) iff ift x ;
+
+If : [C:U] bool -> C -> C -> C = [C:U][x:bool][ift:C][iff:C] boolRec C iff ift x ;
+
+
+
+comp (I -> bool) () 0 (I -> []) true 1 ;
+
+b0' : B 0 ;
+
+p0 : Path (B 0) b0 b0' ;
+
+

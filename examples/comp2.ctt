@@ -8,40 +8,65 @@ refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
 
 reflD : [A : U][a : A] PathD (I -> A) a a = [A : U][a : A][i : I] a ;
 
-const : [A:U]I -> U = [A:U][i:I]A ;
-
-
-weakMeet' : [A:U][a,b:A][p:Path A a b][i,j:I][j = 0 -> a | i = 0 -> a | i = 1 -> p j]A
- = [A:U][a,b:A][p:Path A a b][i,j:I] comp (const A) (i = 0 \/ i = 1) 0 ([j':I][i = 0 -> a | i = 1 -> p j']) a j;
-
-weakMeet : [A:U][a,b:A][p:Path A a b][i,k:I][i = 0 -> a | i = 1 -> p k | k = 0 -> a | k = 1 -> p i]A
- = [A:U][a,b:A][p:Path A a b][i:I][k:I] comp (const A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0
-    ([j:I]
-        [ i = 0 -> a |
-          i = 1 -> weakMeet' A a b p j k |
-          k = 0 -> a |
-          k = 1 -> weakMeet' A a b p j i 
-        ]) a 1 ;
-
-
-weakMeet'' : [A:U][a,b:A][p:Path A a b] PathD ([i:I] Path A a (p i) ) (refl A a) p
- = [A:U][a,b:A][p:Path A a b][i:I][k:I] comp (const A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0
-    ([j:I]
-        [ i = 0 -> a |
-          i = 1 -> weakMeet' A a b p j k |
-          k = 0 -> a |
-          k = 1 -> weakMeet' A a b p j i 
-        ]) a 1 ;
-
 concat : [A:U][a,b,c:A] Path A a b -> Path A b c -> Path A a c =
     [A:U][a,b,c:A][p:Path A a b][q:Path A b c]
-        [i:I] comp (const A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> a | i = 1 -> q j]) (p i) 1;
+        [i:I] comp (I -> A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> a | i = 1 -> q j]) (p i) 1 ;
 
-invFill : [A:U][a,b:A][p:Path A a b][i,j:I][j = 0 -> a | i = 0 -> p j | i = 1 -> a]A = [A:U][a,b:A][p:Path A a b]
-    [i,j:I] comp (const A) (i = 0 \/ i = 1) 0 ([j':I][i = 0 -> p j' | i = 1 -> a]) a j ;
+concatFill : [A:U][a,b,c:A][p:Path A a b][q:Path A b c][i,j:I][j = 0 -> p i | i = 0 -> a | i = 1 -> q j]A
+ = [A:U][a,b,c:A][p:Path A a b][q:Path A b c]
+   [i,j:I] comp (I -> A) (i = 0 \/ i = 1) 0 ([j':I][i = 0 -> a | i = 1 -> q j']) (p i) j ;
 
-inv : [A:U][a,b:A] Path A a b -> Path A b a = [A:U][a,b:A][p:Path A a b]
-    [i:I] (comp (const A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> a]) a 1) ;
+{-
+weakMeet' : [A:U][a,b:A][p:Path A a b][i,j:I][j = 0 -> a | i = 0 -> a | i = 1 -> p j]A
+ = [A:U][a,b:A][p:Path A a b][i,j:I] comp (I -> A) (i = 0 \/ i = 1) 0 ([j':I][i = 0 -> a | i = 1 -> p j']) a j;
+
+weakMeet : [A:U][a,b:A][p:Path A a b][i,k:I][i = 0 -> a | i = 1 -> p k | k = 0 -> a | k = 1 -> p i]A
+ = [A:U][a,b:A][p:Path A a b][i:I][k:I] comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0
+    ([j:I]
+        [ i = 0 -> a |
+          i = 1 -> weakMeet' A a b p j k |
+          k = 0 -> a |
+          k = 1 -> weakMeet' A a b p j i 
+        ]) a 1 ;
+-}
+
+weakMeet : [A:U][a,b:A][p:Path A a b][i,k:I][i = 0 -> a | i = 1 -> p k | k = 0 -> a | k = 1 -> p i]A
+ = [A:U][a,b:A][p:Path A a b][i,k:I] comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0
+    ([j:I]
+        [ i = 0 -> a |
+          i = 1 -> concatFill A a a b (refl A a) p j k  |
+          k = 0 -> a |
+          k = 1 -> concatFill A a a b (refl A a) p j i
+        ]) a 1 ;
+
+
+weakMeetDP : [A:U][a,b:A][p:Path A a b] PathD ([i:I] Path A a (p i) ) (refl A a) p
+ = [A:U][a,b:A][p:Path A a b][i,k:I] comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0
+    ([j:I]
+        [ i = 0 -> a |
+          i = 1 -> concatFill A a a b (refl A a) p j k |
+          k = 0 -> a |
+          k = 1 -> concatFill A a a b (refl A a) p j i
+        ]) a 1 ;
+
+invFill : [A:U][a,b:A][p:Path A a b][i,j:I][j = 0 -> a | i = 0 -> p j | i = 1 -> a]A
+ = [A:U][a,b:A][p:Path A a b]
+   [i,j:I] comp (I -> A) (i = 0 \/ i = 1) 0 ([j':I][i = 0 -> p j' | i = 1 -> a]) a j ;
+
+inv : [A:U][a,b:A] Path A a b -> Path A b a
+ = [A:U][a,b:A][p:Path A a b]
+   [i:I] (comp (I -> A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> a]) a 1) ;
+
+rightUnit : [A:U][a,b,c:A][p:Path A a b] Path (Path A a b) p (concat A a b b p (refl A b)) 
+ = [A:U][a,b,c:A][p:Path A a b][i,j:I] concatFill A a b b p (refl A b) j i ;
+
+gamma : [A:U][a,b:A][p:Path A a b][k,i:I][k = 0 -> inv A a b p i | k = 1 -> b | i = 0 -> b | i = 1 -> p k ]A 
+ = [A:U][a,b:A][p:Path A a b][k,i:I]
+   comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> weakMeet A a b p j k | k = 0 -> invFill A a b p i j | k = 1 -> p j]) a 1 ;
+
+leftUnit : [A:U][a,b,c:A][p:Path A a b] Path (Path A a b) p (concat A a a b (refl A a) p)
+ = [A:U][a,b,c:A][p:Path A a b][k,i:I]
+   comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0 ([j:I][i = 0 -> a | i = 1 -> gamma A a b p j k | k = 0 -> p i | k = 1 -> concatFill A a a b (refl A a) p i j]) (invFill A a b p k i) 1 ;
 
 isContr : [A:U]<x:A>([y:A] Path A x y) ;
 
@@ -63,16 +88,21 @@ funext : [A:U][B:U][f:A -> B][g:A -> B] ([x:A] Path B (f x) (g x)) -> Path (A ->
 ap : [A,B:U][x,y:A][f:A->B] Path A x y -> Path B (f x) (f y) =
     [A,B:U][x,y:A][f:A->B][p:Path A x y][i:I] f (p i);
 
-
-pathRec : [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x] C a (refl A a) -> C x p
+pathInd : [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x] C a (refl A a) -> C x p
  = [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x][c: C a (refl A a)]
-    transp ([i:I] C (weakMeet' A a x p i 1) ([j:I] weakMeet' A a x p i j)) c ;
+    transp ([i:I] C (weakMeet A a x p i 1) ([j:I] weakMeet A a x p i j)) c ;
 
-alphaFill : [A:U][a:A][k,i,j:I][k = 0 -> a | k = 1 -> a | i = 0 -> weakMeet' A a a (refl A a) k j | i = 1 -> a | j = 0 -> a]A
+pathInd' : [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x] C a (refl A a) -> C x p
+ = [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x][c: C a (refl A a)]
+   [D : I -> U = [i:I] C (weakMeet A a x p i 1) ([j:I] weakMeet A a x p i j)]
+    transp D c ;
+
+
+alphaFill : [A:U][a:A][k,i,j:I][k = 0 -> a | k = 1 -> a | i = 0 -> weakMeet A a a (refl A a) k j | i = 1 -> a | j = 0 -> a]A
  = [A:U][a:A][k,i,j:I] comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0
-    ([j':I][i = 0 -> weakMeet' A a a (refl A a) k j' | i = 1 -> a | k = 0 -> a | k = 1 -> a]) a j ;
+    ([j':I][i = 0 -> weakMeet A a a (refl A a) k j' | i = 1 -> a | k = 0 -> a | k = 1 -> a]) a j ;
 
-alpha : [A:U][a:A][k,i:I][k = 0 -> a | k = 1 -> a | i = 0 -> weakMeet' A a a (refl A a) k 1 | i = 1 -> a]A
+alpha : [A:U][a:A][k,i:I][k = 0 -> a | k = 1 -> a | i = 0 -> weakMeet A a a (refl A a) k 1 | i = 1 -> a]A
  = [A:U][a:A][k,i:I] alphaFill A a k i 1 ;
 
 D : [A:U][a:A][C:[x:A](Path A a x) -> U] I -> I -> U
@@ -80,22 +110,22 @@ D : [A:U][a:A][C:[x:A](Path A a x) -> U] I -> I -> U
 -- [i:I][k:I] C (alpha A a k i) (alphaFill A a k i) ;
    [i:I][k:I] C (alpha A a k i) ([x:I] alphaFill A a k i x) ;  --ATTENZIONE! È dovuto al sub-typing ristretto!
 
-pathRecComp : [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x][c:C a (refl A a)]
-  Path (C a (refl A a)) (pathRec A a C a (refl A a) c) c
+pathIndComp : [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x][c:C a (refl A a)]
+  Path (C a (refl A a)) (pathInd A a C a (refl A a) c) c
  = [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x][c:C a (refl A a)][i:I]
    comp (D A a C i) (i = 0 \/ i = 1) 0
-   ([j:I][i = 0 -> transp' ([i':I] C (weakMeet' A a a (refl A a) i' 1) ([j':I] weakMeet' A a a (refl A a) i' j')) 0 j c | i = 1 -> c]) c 1 ; 
+   ([j:I][i = 0 -> transp' ([i':I] C (weakMeet A a a (refl A a) i' 1) ([j':I] weakMeet A a a (refl A a) i' j')) 0 j c | i = 1 -> c]) c 1 ; 
 
 HOTT2221 : [A,B:U][f:A->B][x,y,z:A][p:Path A x y][q:Path A y z] Path (Path B (f x) (f z)) (ap A B x z f (concat A x y z p q)) (concat B (f x) (f y) (f z) (ap A B x y f p) (ap A B y z f q)) ;
 
 reflInvLemma : [A:U][a:A] Path (Path A a a) (refl A a) (inv A a a (refl A a))
  = [A:U][a:A][j,i:I]
    comp (I -> A) (i = 0 \/ i = 1 \/ j = 0 \/ j = 1) 0
-   ([k:I][i = 0 -> a | i = 1 -> a | j = 0 -> a | j = 1 -> invFill A a a (refl A a) i k]) a 1;
+   ([k:I][i = 0 -> a | i = 1 -> a | j = 0 -> a | j = 1 -> invFill A a a (refl A a) i k]) a 1 ;
 
 HOTT2222 : [A,B:U][f:A->B][x,y:A][p:Path A x y] Path (Path B (f y) (f x)) (ap A B y x f (inv A x y p)) (inv B (f x) (f y) (ap A B x y f p))
  = [A,B:U][f:A->B][x,y:A][p:Path A x y]
-   pathRec A x
+   pathInd A x
    ([b:A][q:Path A x b] Path (Path B (f b) (f x)) (ap A B b x f (inv A x b q)) (inv B (f x) (f b) (ap A B x b f q)))
    y p
    (concat (Path B (f x) (f x))
@@ -103,3 +133,21 @@ HOTT2222 : [A,B:U][f:A->B][x,y:A][p:Path A x y] Path (Path B (f y) (f x)) (ap A 
      (ap (Path A x x) (Path B (f x) (f x)) (inv A x x (refl A x)) (refl A x) (ap A B x x f) (inv (Path A x x) (refl A x) (inv A x x (refl A x)) (reflInvLemma A x)))
      (reflInvLemma B (f x))
    ) ;
+
+A : I -> U ;
+u : [i:I] A i ;
+v : [i:I] A i ;
+p0 : Path (A 0) (u 0) (v 0) ;
+
+p1 : Path (A 1) (u 1) (v 1) = transp ([i:I] Path (A i) (u i) (v i)) p0 ;
+
+B : U ;
+b : B ;
+p2 : Path B b b ;
+p2' : Path B b b ;
+p3 : Path (Path B b b) p2 p2' ;
+
+inv (Path B b b) p2 p2 (refl (Path B b b) p2) ;
+inv (Path B b b) p2 p2' p3 ;
+
+-- reflInvLemma : [A:U][a:A] Path (Path A a a) (refl A a) (inv A a a (refl A a)) 

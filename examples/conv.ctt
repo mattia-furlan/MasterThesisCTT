@@ -36,9 +36,9 @@ example' : [i = j]U = [i = j -> P(x i) | i = j -> P(x j)] ;
 
 g : N -> N ;
 h : N -> N ;
-f : [i = 0 -> g | i = 1 -> h](N -> N) ;
+f : [i = 0 -> g | i = 1 -> h] (N -> N) ;
 
-fOK : N = f Z ;  -- f Z => [i = 0 -> g Z | i = 1 -> h Z] N
+fOK : N = f Z ;                -- f Z => [i = 0 -> g Z | i = 1 -> h Z] N
 fOK' : [i = 0 -> f Z]N = fOK ;
 
 gU : N -> U = [n:N] ind (N -> U) N (N -> U -> [XX:U]XX) n ;
@@ -47,3 +47,50 @@ fU : [k:I][k = 0 -> gU | k = 1 -> idty](N -> U) ;
 sys : [k:I][k = 0 \/ k = 1]U = [k:I][k = 0 -> fU k Z | k = 1 -> N] ;
 
 test : [i = 0 \/ (i = j /\ i = 1)]U = [i = 0 -> sys i | (i = 1 /\ i = j) -> sys j] ;
+
+B : U ;
+b0 : B ;
+b1 : B ;
+ff : [k:I] (([k = 0 -> a | k = 1 -> a]A) * [k = 0 -> b0 | k = 1 -> b1]B) ;
+ff2 : [k:I] [k = 0 -> (a,b0) | k = 1 -> (a,b1)] (A*B) ;
+ff3 : (([i = 0 -> a | i = 1 -> a]A) * [i = 0 -> b0 | i = 1 -> b1]B) ;
+ff4 : [i = 0 -> (a,b0) | i = 1 -> (a,b1)] (A*B) ;
+
+ff5 : [z:I](([z = 0 -> a | z = 1 -> a]A) * [z = 0 -> b0 | z = 1 -> b1]B) ;
+ff6 : [z:I] [z = 0 -> (a,b0) | z = 1 -> (a,b1)] (A*B) ;
+
+fu : [i = 0 -> [n:N] Z | i = 1 -> [n:N] S n] (N -> N) ;
+
+ff7: [k:I] [k = 0 -> (a,b0) | k = 1 -> (a,b1)](([k = 0 -> a | k = 1 -> a]A) * [k = 0 -> b0 | k = 1 -> b1]B) ;
+a' : [j = 0 -> a | j = 1 -> a]A ;
+b' : [z:I][z = 0 -> b0 | z = 1 -> b1]B ;
+ff8: [z:I][j = 0 -> (a',b' z) | j = 1 -> (a',b' z)](([z = 0 -> a | z = 1 -> a]A) * [z = 0 -> b0 | z = 1 -> b1]B) ;
+
+z : I ;
+ff9: [j = 0 -> (a',b' z) | j = 1 -> (a',b' z)](([z = 0 -> a | z = 1 -> a]A) * [z = 0 -> b0 | z = 1 -> b1]B) ;
+
+
+gg : [i = 0 -> inl a | i = 1 -> inr b0] (A + B) ;
+gg2 : ([i = 0 -> a | i = 1 -> a]A) + ([i = 0 -> b0 | i = 1 -> b1]B) ;
+
+F : A + B -> U = [cp:A + B] split (A + B -> U) (A -> N) (B -> Path N Z Z) cp ;
+
+s : F gg = split F (A -> Z) (B -> refl N Z) gg ;
+
+-- 'split F (A -> Z) (B -> refl N Z) gg' has (inferred) type
+-- [i = 0 -> N | i = 1 -> Path N Z Z] F gg
+
+{-
+gg' : [z = 1 -> inl a | z = 0 -> inr b0] (A + B) ;
+
+s' : F gg' = split F ([a':A] Z) ([b':B] refl N Z) gg' ;
+
+F1 : A + B -> U = (A + B) -> [z = 0 -> Z | z = 1 -> S Z]N ;
+
+s1 : F1 gg' = split F1 ([a':A] Z) ([b':B] Z) gg' ;
+-}
+
+
+m : N ;
+n : [i = 0 -> m]N ;
+n' : [i = 0 -> S m]N = S n;

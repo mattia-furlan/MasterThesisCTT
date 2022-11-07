@@ -2,11 +2,10 @@
 
 module Ident where
 
-import qualified Prelude as C (Eq, Ord, Show(..), Read, String)
-import qualified Data.String
+import Data.String
 
-newtype Ident = Ident C.String
-  deriving (C.Eq, C.Ord, C.Read, Data.String.IsString)
+newtype Ident = Ident String
+  deriving (Eq, Ord, IsString)
 
-instance C.Show Ident where
+instance Show Ident where
     show (Ident s) = s

@@ -8,7 +8,7 @@ plus : N -> N -> N = [m : N][n : N] ind idN m ([n':N][mPlusn:N]S mPlusn) n ;
 
 
 curry : [A:U][B:U][C:U] ((A * B) -> C) -> A -> B -> C =
-    [A:U][B:U][C:U][f : (A * B) -> C][a:A][b:B] f ((a,b)) ;
+    [A:U][B:U][C:U][f : (A * B) -> C][a:A][b:B] f (a,b) ;
 uncurry : [A:U][B:U][C:U] (A -> B -> C) -> (A * B) -> C = 
     [A:U][B:U][C:U][g : A -> B -> C][p: A * B] g (p.1) (p.2) ;
 
@@ -45,9 +45,12 @@ AC : [A:U][B:U][C:A -> B -> U]([x:A]<y:B> C x y) -> <f:A -> B>[x:A] C x (f x) =
     [A:U][B:U][C:A -> B -> U][h : [x:A]<y:B> C x y]
         (([x:A](h x).1),([x:A](h x).2)) ;
 
-indSigma : [A:U][B:A->U][C:(<x:A>B x)->U]([a:A][b:B a]C((a,b))) -> [p:<x:A>B x]C p =
+indSigma : [A:U][B:A->U][C:(<x:A>B x)->U]([a:A][b:B a]C (a,b)) -> [p:<x:A>B x] C p =
     [A:U][B:A->U][C:(<x:A>B x)->U][h:[a:A][b:B a]C((a,b))][p:<x:A>B x]
         h p.1 p.2;
+
+recSigma : [A:U][B:U][C:A*B->U]([a:A][b:B]C (a,b)) -> [p:A*B] C p =
+    [A:U][B:U][C:A*B->U][h:[a:A][b:B]C (a,b)] indSigma A (A->B) C h ;
 
 
 -------------
