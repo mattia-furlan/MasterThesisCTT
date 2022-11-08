@@ -65,6 +65,9 @@ isTrue = (== fTrue)
 isFalse :: DisjFormula -> Bool
 isFalse = (== fFalse)
 
+isTrueConj :: ConjFormula -> Bool
+isTrueConj (Conj cf) = null cf
+
 {- Implication and equivalence -}
 
 {- A disjunctive formula implies another one if each of its conjunctions
