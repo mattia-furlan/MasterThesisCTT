@@ -61,7 +61,7 @@ eval ctx term = case term of
     I  -> I
     I0 -> I0
     I1 -> I1
-    Sys sys               -> simpl emptyDirEnv (Sys $ evalSystem ctx sys)
+    Sys sys               -> evalSystemSimpl ctx sys
     Partial phi t         -> foldPartial (evalDisjFormula ctx phi) (eval ctx t)
     Restr sys t           -> foldRestr (evalSystem ctx sys) (eval ctx t)
     Comp fam phi i0 u b i -> doComp ctx fam phi i0 u b i
@@ -159,7 +159,7 @@ foldPartial (Disj df0) v0 = (\(df,v) -> Partial (Disj df) v) .
         dnf :: [ConjFormula] -> [ConjFormula] -> [ConjFormula]
         dnf df1 df2 = [cf1 `meet` cf2 | cf1 <- df1, cf2 <- df2] 
 
--- Evaluate a system
+-- Evaluate a system (used in evaluating restrictions)
 evalSystem :: Ctx -> System -> System
 evalSystem ctx sys =
     concatMap (\(phi,t) -> evalConjFormula' phi (eval ctx t)) sys
@@ -168,6 +168,22 @@ evalSystem ctx sys =
         evalConjFormula' phi v = case evalConjFormula ctx phi of
             Nothing -> []
             Just cf -> [(cf,v)]
+
+-- Evaluate a system and eventually simplify it (recursively)
+evalSystemSimpl :: Ctx -> System -> Value
+evalSystemSimpl ctx sys =
+    case foldrM evalConjFormula' [] sys of
+        Left val   -> val
+        Right sys' -> Sys sys'
+    where
+        -- Same as `evalSystem`, except that if it finds a true formula,
+        -- it returns the given value using `Left`; otherwise, the evaluated
+        -- system is returned inside `Right`
+        evalConjFormula' :: (ConjFormula,Term) -> System -> Either Value System
+        evalConjFormula' (psi,t) sys' = case evalConjFormula ctx psi of
+            Nothing        -> Right sys         -- False formula: nothing to add
+            Just (Conj []) -> Left $ eval ctx t -- True formula, return the value
+            Just cf        -> Right $ (cf,eval ctx t) : sys' -- Otherwise, append
 
 -- Split the Abst/Sigma constructor and the arguments from a value
 -- inside a closure
