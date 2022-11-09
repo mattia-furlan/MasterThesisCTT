@@ -6,6 +6,7 @@ import Ident
 import Interval
 import CoreCTT
 import Eval
+import Conv
 
 -- Infer the type of a term, in the given context and directions environment
 inferType :: Ctx -> DirEnv -> Term -> Either ErrorString Value
@@ -148,6 +149,7 @@ inferType ctx dirs term = case term of
     Comp fam phi@(Disj df) i0 u b i -> do
         -- Checking the type-family `fam`, point `i_0` and formula `phi`
         checkType ctx dirs fam (makeFunTypeVal I Universe) -- I -> U
+        -- TODO Check that the type is fibrant
         checkType ctx dirs i0 I
         checkDisjFormula ctx phi
         -- Checking that `u` has the correct type
@@ -195,8 +197,8 @@ checkTypePartialDisj (Disj df) ctx dirs e v =
 -- Check the type of a term agains a given type
 -- The type must be a value (i.e. in β-normal form)
 checkType :: Ctx -> DirEnv -> Term -> Value -> Either ErrorString ()
---checkType ctx dirs term v = myTrace ("[checkType]<= term = " ++ show term ++ ", v = " ++ show v ++ ", ctx = " ++ showCtx (filter (\(s,_) -> s `elem` (vars term)) ctx) ++ ", dirs = " ++ show dirs) $ case (term,v) of
-checkType ctx dirs term v = case (term,v) of
+checkType ctx dirs term v = myTrace ("[checkType]<= term = " ++ show term ++ ", v = " ++ show v ++ ", ctx = " ++ showCtx (filter (\(s,_) -> s `elem` (vars term)) ctx) ++ ", dirs = " ++ show dirs) $ case (term,v) of
+--checkType ctx dirs term v = case (term,v) of
     -- Let-definition
     (TDef (s,t,e) t',_) -> do
         checkType ctx dirs t Universe

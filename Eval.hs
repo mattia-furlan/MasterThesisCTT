@@ -189,8 +189,7 @@ evalSystem ctx sys =
             Just cf        -> Right $ (cf,eval ctx t) : sys' -- Otherwise, append
 
 -- Simplify a neutral value if the type is a restriction type with a true
--- formula, otherwise do nothing. It is similar to `simplRestr`, used only
--- for `conv`, except that here we do not use the directions environment.
+-- formula, otherwise do nothing.
 -- `simplNeutralValue` is used only in evaluation.
 simplNeutralValue :: Value -> Value
 simplNeutralValue neu@(Neutral _ ty) = case ty of
@@ -237,31 +236,6 @@ doApply (Sys sys) arg = Sys $ mapSys (`doApply` arg) sys
 doApply fun@(Neutral _ (Partial phi cl@Closure{})) arg =
     Neutral (App fun arg) (foldPartial phi (doApply cl arg))
 doApply v arg = error $ "[doApply] got " ++ show v ++ ", " ++ show arg
-
--- Handler of `Ind` (i.e. Nat eliminator)
-doInd :: Value -> Value -> Value -> Value -> Value
-doInd fam base step m = case m of
-    -- Standard base and inductive cases: do β-redution
-    Zero     -> base
-    Succ n'  -> doApply fun prev
-        where
-            fun = doApply step n'
-            prev = doInd fam base step n'
-    -- Stardard neutral case; need to compute the type
-    Neutral n Nat -> simplNeutralValue $ Neutral (Ind fam base step n)
-        (doApply fam (Neutral n Nat))
-    -- Restricted neutral case
-    Neutral n (Restr sys Nat) -> 
-        simplNeutralValue $ Neutral (Ind fam base step n)
-            (foldRestr sys' (doApply fam (Neutral n Nat)))
-        where sys' = mapSys (doApply fam) sys
-    -- System case
-    Sys sys -> Sys $ mapSys (doInd fam base step) sys
-    -- Partial type case
-    Neutral n (Partial phi Nat) -> 
-        Neutral (Ind fam base step n)
-            (foldPartial phi (doApply fam (Neutral n Nat)))
-    otherwise -> error $ "[doInd] got " ++ show m
 
 -- Handler of `Fst` (i.e. ∑-type first projection)
 doFst :: Value -> Value
@@ -317,7 +291,7 @@ doSplit fam f1 f2 x = case x of
     Neutral _ (Restr sys (Sum ty1 ty2)) -> simplNeutralValue $
         Neutral (Split fam f1 f2 (Neutral x (Sum ty1 ty2)))
             (foldRestr sys' (doApply fam x))
-        where sys' = mapSys (doApply fam) sys
+        where sys' = mapSys (doSplit fam f1 f2) sys
     -- System case
     Sys sys -> Sys $ mapSys (doSplit fam f1 f2) sys
     -- Partial type case
@@ -325,6 +299,31 @@ doSplit fam f1 f2 x = case x of
         Neutral (Split fam f1 f2 (Neutral x (Sum ty1 ty2)))
             (foldPartial phi (doApply fam x))
     otherwise -> error $ "[doSplit] got " ++ show x
+
+-- Handler of `Ind` (i.e. Nat eliminator)
+doInd :: Value -> Value -> Value -> Value -> Value
+doInd fam base step m = case m of
+    -- Standard base and inductive cases: do β-redution
+    Zero     -> base
+    Succ n'  -> doApply fun prev
+        where
+            fun = doApply step n'
+            prev = doInd fam base step n'
+    -- Stardard neutral case; need to compute the type
+    Neutral n Nat -> simplNeutralValue $ Neutral (Ind fam base step n)
+        (doApply fam (Neutral n Nat))
+    -- Restricted neutral case
+    Neutral n (Restr sys Nat) -> 
+        simplNeutralValue $ Neutral (Ind fam base step n)
+            (foldRestr sys' (doApply fam (Neutral n Nat)))
+        where sys' = mapSys (doInd fam base step) sys
+    -- System case
+    Sys sys -> Sys $ mapSys (doInd fam base step) sys
+    -- Partial type case
+    Neutral n (Partial phi Nat) -> 
+        Neutral (Ind fam base step n)
+            (foldPartial phi (doApply fam (Neutral n Nat)))
+    otherwise -> error $ "[doInd] got " ++ show m
 
 -- Utility function to handle eventually empty strings
 ifEmpty :: Ident -> String -> Ident
@@ -435,8 +434,8 @@ doComp ctx fam phi i0 u b i =
                                         map (\case (psi,Succ m) -> (psi,m)) sysV
                                     Succ m   -> m
                 Neutral{} -> doNeutralComp
-            -- Restriction type `[phi]ty`
-            Restr sysR ty | var `notElem` concatMap vars (keys sys) ->
+            -- Restriction type `[phi]ty` -- TODO
+            Restr sysR ty | var `notElem` concatMap vars (keys sysR) ->
                     doComp ctx (Abst var I ty') formula i0 u' b i
                 where
                     formula = Disj $ phi' ++ psis
