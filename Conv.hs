@@ -82,8 +82,10 @@ proofIrrelevant dirs ty = case ty of
         varV :: Ident -> Value -> CtxEntry
         varV s t = Val $ Neutral (Var $ newVar (keys ctx) s) (eval ctx t)
         in case cl of
-            Abst s t e  -> proofIrrelevant dirs 
-                (eval (extend ctx s (varV s t)) e)
+            -- ∏-types: codomain proof irrelevant
+            Abst s t e  -> proofIrrelevant dirs $
+                eval (extend ctx s (varV s t)) e
+            -- ∑-types: both components proof irrelevant
             Sigma s t e -> proofIrrelevant dirs (eval ctx t) &&
                 proofIrrelevant dirs (eval (extend ctx s (varV s t)) e)
     otherwise -> False
@@ -116,7 +118,7 @@ instance Convertible Value where
             (Neutral _ (Closure Abst{} _),Closure (Abst s2 t2 _) ctx2) -> let
                 var = newVar used s2
                 t2V = eval ctx2 t2
-                e1' = doApply (simpl dirs v1) v1 (Neutral (Var var) t2V)
+                e1' = doApply v1 (Neutral (Var var) t2V)
                 e2' = evalClosure v2 (Neutral (Var var) t2V)
                 in conv (var : used) dirs e1' e2'
             {- Sigma types -}
@@ -152,7 +154,7 @@ instance Convertible Value where
             (Partial phi v,Partial phi' v') -> eqFormulas dirs phi phi' &&
                 cnv v v'
             (Restr sys t,Restr sys' t') -> conv used dirs sys sys' && cnv t t'
-            {- Neutrals -}
+            {- Values inside the `Neutral` wrapper -}
             (Var s1,Var s2) -> s1 == s2
             (App f1 a1,App f2 a2) -> cnv f1 f2 && cnv a1 a2 
             (Ind ty1 b1 s1 n1,Ind ty2 b2 s2 n2) ->
@@ -163,11 +165,6 @@ instance Convertible Value where
             (Comp fam1 phi1 i01 u1 b1 i1,Comp fam2 phi2 i02 u2 b2 i2) ->
                 cnv fam1 fam2 && eqFormulas dirs phi1 phi2 &&
                 cnv i01 i02 && cnv u1 u2 && cnv b1 b2 && cnv i1 i2
-            -- Neutral values with a simplifiable restriction type
-            (Neutral _ ty1,_) | isSimplRestr dirs ty1 ->
-                    cnv (simpl dirs v1) v2
-            (_,Neutral _ ty2) | isSimplRestr dirs ty2 ->
-                    cnv v1 (simpl dirs v2)
             -- Interval names
             (Neutral (Var x1) I,Neutral (Var x2) I) -> 
                 dirs `makesTrueAtomic` Diag x1 x2
@@ -179,10 +176,20 @@ instance Convertible Value where
                 dirs `makesTrueAtomic` Eq0 x2
             (I1,Neutral (Var x2) I) -> 
                 dirs `makesTrueAtomic` Eq1 x2
-            -- Last case, two neutral values
-            -- The types must be convertible, due to type-checking
-            (Neutral v ty,Neutral v' _) ->
-                proofIrrelevant dirs ty || cnv v v'
+            {- Neutrals -}
+            -- Simplest case: both neutral, with proof irrelevant type
+            (Neutral v ty,Neutral v' _) | proofIrrelevant dirs ty ->
+                True
+            -- One value neutral with simplifiable restriction type,
+            -- the other value not neutral
+            (Neutral _ ty1,_) | isSimplRestr dirs ty1 ->
+                    cnv (simpl dirs v1) v2
+            (_,Neutral _ ty2) | isSimplRestr dirs ty2 ->
+                    cnv v1 (simpl dirs v2)
+            -- Type is not a simplifiable restriction type,
+            -- we must look inside the term (or proof)
+            (Neutral v _,Neutral v' _) -> cnv v v'
+            -- No other cases
             otherwise -> False
 
 -- Convertibility between two systems
