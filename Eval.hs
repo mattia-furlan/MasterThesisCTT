@@ -607,7 +607,9 @@ printTerm' i = \case
     I1              -> "1"
     Sys sys         -> showSystem sys
     Partial phi t   -> "[" ++ show phi ++ "]" ++ printTerm' (i+1) t
-    Restr sys t     -> showSystem sys ++ printTerm' (i+1) t
+    -- If the restriction is empty, don't print it, otherwise it
+    -- could be mistaken for a partial type with false formula
+    Restr sys t     -> (if null sys then "" else showSystem sys) ++ printTerm' (i+1) t
     Comp fam phi i0 u b i' -> par1 ++ "comp " ++ printTerm' (i+1) fam
         ++ " (" ++ show phi ++ ") " ++ printTerm' (i+1) i0 ++ " "
             ++ printTerm' (i+1) u ++  " " ++ printTerm' (i+1) b
