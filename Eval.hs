@@ -16,7 +16,7 @@ import Debug.Trace
 
 -- For debug purposes only
 debug :: Bool
-debug = True
+debug = False
 
 myTrace :: String -> a -> a
 myTrace s x = if debug then trace s x else x
@@ -33,8 +33,9 @@ lookupType s ((s',entry):ctx) = if s == s' then
         lookupType s ctx
 
 -- Evaluate a term in the given context
-eval :: Ctx -> Term -> Value --eval ctx term = myTrace ("[eval] " ++ show term ++ ", ctx = " ++ showCtx (filter (\(s,_) -> s `elem` (vars term)) ctx)) $ case term of
-eval ctx term = case term of
+eval :: Ctx -> Term -> Value
+eval ctx term = myTrace ("[eval] " ++ show term ++ ", ctx = " ++ showCtx ctx) $ case term of
+--eval ctx term = case term of
     Var s -> case lookup s ctx of
         Nothing          -> error $ "[eval] not found var `" ++ show s ++ "` in ctx"
         Just (Val v)     -> v
@@ -65,11 +66,13 @@ eval ctx term = case term of
     Partial phi t         -> foldPartial (evalDisjFormula ctx phi) (eval ctx t)
     Restr sys t           -> foldRestr (evalRestrSystem ctx sys) (eval ctx t)
     Comp fam phi i0 u b i -> doComp ctx fam phi i0 u b i
+    -- Already evaluated term (used solely for `doComp`)
+    TermV v               -> v
     otherwise             -> error $ "[eval] got " ++ show term
 
 -- Evaluate a conjunctive formula
 evalConjFormula :: Ctx -> ConjFormula -> Maybe ConjFormula
-evalConjFormula ctx conj = myTrace ("[evalConjFormula: " ++ show conj ++ "] " ++ " => " ++ show conj') conj'
+evalConjFormula ctx conj = conj'
     where
         -- Get the bindings which concern the formula's variables
         entries' = filter (\(s,_) -> s `elem` vars conj) (getBindings ctx)
@@ -88,7 +91,7 @@ evalConjFormula ctx conj = myTrace ("[evalConjFormula: " ++ show conj ++ "] " ++
 -- Evaluate a single conjuction by replacing `s` with 0
 -- Returns `Nothing` if the resulting formula is false
 evalConj :: (Ident,Value) -> ConjFormula -> Maybe ConjFormula
-evalConj (s,I0) conj@(Conj cf) = myTrace ("[evalConj] conj' = " ++ show conj' ++ ", direnv = " ++ show (conjToDirEnv conj')) $
+evalConj (s,I0) conj@(Conj cf) =
     if conjToDirEnv conj `makesTrueAtomic` Eq1 s -- Inconsistent cases
         || inconsistent (conjToDirEnv conj') then
         Nothing
@@ -103,7 +106,7 @@ evalConj (s,I0) conj@(Conj cf) = myTrace ("[evalConj] conj' = " ++ show conj' ++
             af -> [af]) cf
 
 -- Same as before, now replacing `s` with 1
-evalConj (s,I1) conj@(Conj cf) = myTrace ("[evalConj] conj' = " ++ show conj' ++ ", direnv = " ++ show (conjToDirEnv conj')) $
+evalConj (s,I1) conj@(Conj cf) = 
     if conjToDirEnv conj `makesTrueAtomic` Eq0 s -- Inconsistent cases
         || inconsistent (conjToDirEnv conj') then
         Nothing
@@ -208,17 +211,21 @@ extract v             = error $ "[extract] got " ++ show v
 -- the given value. In case of non-dependent abstractions, i.e. empty
 -- variable, we don't need to extend the context
 evalClosure :: Value -> Value -> Value
-evalClosure (Closure (Abst  s _ e) ctx) arg =
+evalClosure (Closure (Abst  s t e) ctx) arg =
     eval (if s == Ident "" then ctx else extend ctx s (Val arg)) e
-evalClosure (Closure (Sigma s _ e) ctx) arg =
+evalClosure (Closure (Sigma s t e) ctx) arg =
     eval (if s == Ident "" then ctx else extend ctx s (Val arg)) e
+{-evalClosure (Closure (Abst  s t e) ctx) arg =
+    eval (if s == Ident "" then ctx else extend (case arg of Neutral (Var (Ident s')) _ -> extend ctx (Ident s') (Decl t); _ -> ctx) s (Val arg)) e
+evalClosure (Closure (Sigma s t e) ctx) arg =
+    eval (if s == Ident "" then ctx else extend (case arg of Neutral (Var (Ident s')) _ -> extend ctx (Ident s') (Decl t); _ -> ctx) s (Val arg)) e-}
 evalClosure v arg = error $ "[evalClosure] got non-closure " ++ show v
     ++ " applied to " ++ show arg
 
 -- Handler of `App` (function application, i.e. ∏-type eliminator)
 doApply :: Value -> Value -> Value
 -- Standard case: do β-reduction
-doApply fun@(Closure Abst{} _) arg = evalClosure fun arg
+doApply fun@(Closure Abst{} ctx) arg = evalClosure fun arg
 -- Restricted abstraction case, which requires to apply the function
 -- inside the restriction too
 doApply (Restr sys fun@Closure{}) arg = foldRestr sys' (doApply fun arg)
@@ -330,13 +337,22 @@ ifEmpty :: Ident -> String -> Ident
 ifEmpty (Ident "") s = Ident s
 ifEmpty i          _ = i
 
--- Handler of composition (which is not an eliminator!)
+
+{- Handler of composition (which is not an eliminator!).
+The problem with composition is that we need to pattern-match inside
+a closure (`famV`); when calling `doComp` recursively, we must
+read-back terms, but we cannot do so for the type family (otherwise
+it would then be evaluated under the general context and not in its own).
+Therefore, we introduce a wrapper `TermV` which makes it possible to
+include values (closures) inside terms, so that when the whole term is
+evaluated, the closure is evaluated with the right context. The wrapper
+`TermV` is used solely in the evaluation of composition.
+-}
 doComp :: Ctx -> Term -> DisjFormula -> Term -> Term -> Term -> Term -> Value
---doComp ctx fam phi i0 u b i = myTrace ("[doComp-?] " ++ show (Comp fam phi i0 u b i) ++ ", " ++ show (Comp famV phiV i0V uV bV iV)) $
+--doComp ctx fam phi i0 u b i = myTrace ("[doComp-?] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx) $
 doComp ctx fam phi i0 u b i = 
     if isTrue phiV then  -- 1° trivial case: `phi` is True
         doApply uV iV
-    --else if conv (keys ctx) emptyDirEnv i0V iV then -- 2° trivial case: i = i_0
     else if i0V == iV then -- 2° trivial case: i = i_0 (no need for `conv`)
         bV
     else
@@ -346,21 +362,23 @@ doComp ctx fam phi i0 u b i =
             var2 = case uV of
                 Closure (Abst v _ _) _ -> newVar (keys ctx) (ifEmpty v "j")
             emptySys = Abst (Ident "") I (Sys [])
+            ctxOf v = case v of Closure _ gctx -> gctx
         -- Evaluate the type-family, pattern-matching inside the closure
         in case doApply famV (Neutral (Var var) I) of
             -- ∏-type `[x:ty]e`, with `ty` a type
-            cl@(Closure (Abst x ty _) ctx') | eval ctx' ty /= I -> myTrace ("[doComp-∏] " ++ show (Comp fam phi i0 u b i)) $
+            cl@(Closure (Abst x ty e) ctx') | eval ctx' ty /= I -> myTrace ("[doComp-∏] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx ++ ", ctx' = " ++ showCtx ctx') $
                 Closure (Abst yi tyc comp) ctx
                 where
                     -- Variable of the target type `tyc`, i.e. `ty(i)`
                     yi   = newVar (var : var2 : keys ctx) (ifEmpty x "u")
                     -- Transport of that variable at `i0` and `var'
-                    yt0  = Comp (Abst var I ty1) fFalse i emptySys (Var yi) i0
-                    yt   = Comp (Abst var I ty1) fFalse i emptySys (Var yi) (Var var)
+                    yt0  = Comp (TermV fam1) fFalse i emptySys (Var yi) i0
+                    yt   = Comp (TermV fam1) fFalse i emptySys (Var yi) (Var var)
                     -- Resulting composition
-                    comp = Comp (Abst var I e') phi i0 u' (App b yt0) i
-                    ty1  = readBack (keys ctx) $ eval ctx' ty
-                    e'   = readBack (keys ctx) $ evalClosure cl (eval ctx yt)
+                    comp = Comp (TermV fam2) phi i0 u' (App b yt0) i
+                    -- Type families
+                    fam1 = Closure (Abst var I ty) ctx'
+                    fam2 = Closure (Abst var I (App (Abst x ty e) yt)) ctx'
                     -- Target type: `ty(i)`
                     tyc  = readBack (keys ctx) $ case doApply famV iV of
                         Closure (Abst _ ty' _) ctx'' -> eval ctx'' ty'
@@ -369,35 +387,36 @@ doComp ctx fam phi i0 u b i =
                         True  -> u
                         False -> Abst var2 I (App (App u (Var var2)) yt)
             -- ∏-type `[x:I]e`     
-            cl@(Closure (Abst x ty _) ctx') | eval ctx' ty == I -> myTrace ("[doComp-∏I] " ++ show (Comp fam phi i0 u b i)) $
+            cl@(Closure (Abst x ty e) ctx') | eval ctx' ty == I -> myTrace ("[doComp-∏I] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx ++ ", ctx' = " ++ showCtx ctx') $
                 Closure (Abst x' I comp) ctx
                 where
                     -- Fresh nterval variable
-                    x'   = newVar (var : var2 : keys ctx) x
+                    x'   = newVar (var : var2 : keys ctx) (ifEmpty x "i")
                     -- Resulting composition
-                    comp = Comp (Abst var I e') phi i0 u' (App b (Var x')) i
-                    e'   = readBack (keys ctx) $ evalClosure cl (Neutral (Var x') I)
+                    comp = Comp (TermV fam') phi i0 u' (App b (Var x')) i
+                    fam' = Closure (Abst var I e) ctx'
                     -- Apply functions to `x'` inside `u`
                     u'   = case isFalse phiV of
                         True  -> u
                         False -> Abst var2 I (App (App u (Var var2)) (Var x'))
             -- ∑-type `<x:ty>e`
-            cl@(Closure (Sigma _ ty _) ctx') -> myTrace ("[doComp-∑] " ++ show (Comp fam phi i0 u b i)) $ Pair c1 c2
+            cl@(Closure (Sigma _ ty _) ctx') -> myTrace ("[doComp-∑] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx ++ ", ctx' = " ++ showCtx ctx') $ Pair c1 c2
                 where
                     -- Composition on each pair
-                    c1  = doComp ctx (Abst var I ty1) phi i0 u0 (Fst b) i
-                    c2  = doComp ctx (Abst var I ty2) phi i0 u1 (Snd b) i
+                    c1  = doComp ctx (TermV fam1) phi i0 u0 (Fst b) i
+                    c2  = doComp ctx (TermV fam2) phi i0 u1 (Snd b) i
                     -- The type family of `c2` needs the comp. on the first component
-                    ty1 = readBack (keys ctx) $ eval ctx' ty
-                    c1' = doComp ctx (Abst var I ty1) phi i0 u0 (Fst b) (Var var)
+                    fam1 = Closure (Abst var I ty) ctx'
+                    fam2 = Closure (Abst var I ty2) ctx'
                     ty2 = readBack (keys ctx) $ evalClosure cl c1'
+                    c1' = doComp ctx (TermV fam1) phi i0 u0 (Fst b) (Var var)
                     -- Apply projections inside `u`
                     (u0,u1) = case isFalse phiV of
                         True  -> (u,u)
                         False -> (Abst var2 I (Fst (App u (Var var2))),
                                   Abst var2 I (Snd (App u (Var var2))))
             -- Coproduct `ty1 + ty2`
-            Sum ty1 ty2 -> myTrace ("[doComp-Sum] " ++ show (Comp fam phi i0 u b i)) $
+            Sum ty1 ty2 -> myTrace ("[doComp-Coproduct] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx) $
                 -- If `b` is neutral, the result is neutral
                 case bV of
                     Neutral{} -> doNeutralComp
@@ -407,9 +426,10 @@ doComp ctx fam phi i0 u b i =
                         InL b1 -> (InL,b1,ty1)
                         InR b2 -> (InR,b2,ty2)
                       -- Resulting composition
-                      comp = doComp ctx (Abst var I ty') phi i0 u' b' i
-                      b' = readBack (keys ctx) bV'
-                      ty'  = readBack (keys ctx) ty
+                      comp = doComp ctx (TermV fam') phi i0 u' b' i
+                      b'   = readBack (keys ctx) bV'
+                      fam' = Closure (Abst var I ty') (ctxOf famV)
+                      ty'  = readBack (keys (ctxOf famV)) ty
                       -- Remove the outer injections from `u`
                       u' = case isFalse phiV of
                         True  -> u
@@ -421,7 +441,7 @@ doComp ctx fam phi i0 u b i =
                                 InL q    -> q
                                 InR q    -> q
             -- Naturals
-            Nat -> myTrace ("[doComp-Nat] " ++ show (Comp fam phi i0 u b i)) $ case bV of
+            Nat -> myTrace ("[doComp-Nat] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx) $ case bV of
                 Zero    -> Zero
                 Succ b' -> Succ $ doComp ctx fam phi i0 u' b' i
                     -- Remove the outer `S` from `u`
@@ -434,30 +454,33 @@ doComp ctx fam phi i0 u b i =
                                         map (\case (psi,Succ m) -> (psi,m)) sysV
                                     Succ m   -> m
                 Neutral{} -> doNeutralComp
-            -- Restriction type `[phi]ty` -- TODO
-            Restr sysR ty | var `notElem` concatMap vars (keys sysR) ->
-                    doComp ctx (Abst var I ty') formula i0 u' b i
+            -- Restriction type `[phi]ty`; the constraint on the variable
+            -- must have already been checked by the type-checker
+            Restr sysR tyV -> myTrace ("[doComp-Restr] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx) $
+                    doComp ctx (TermV fam') formula i0 u' b i
                 where
                     formula = Disj $ phi' ++ psis
                     phi' = case phi of Disj ff -> ff 
                     psis = keys sysR
-                    ty'  = readBack (keys ctx) ty
+                    fam' = Closure (Abst var I ty') (ctxOf famV)
+                    ty'  = readBack (keys (ctxOf famV)) tyV
+                    --ty'  = readBack (keys ctx) tyV
                     u'   = Abst var2 I (Sys sys')
                     -- Concatenate the two systems
                     sys' = map (\conj -> (conj,App u (Var var2))) phi'
                         ++ case doApply famV (Neutral (Var var2) I) of
                             Restr sys'' _ ->
-                                map (\(conj,v) -> (conj,readBack (keys ctx) v)) sys''
+                                mapSys (TermV . readBack (keys ctx)) sys''
             -- Neutral type family; the result of the composition is neutral too
             otherwise -> myTrace ("[doComp-neutral] " ++
                 show (Comp fam phi i0 u b i)) $ doNeutralComp
     where
         -- Values computed for each argument (remember that Haskell is lazy!)
-        famV = eval ctx fam
+        famV = myTrace ("[doComp - fam = " ++ show fam ++ "]" ++ show (Comp fam phi i0 u b i)) $ eval ctx fam
         phiV = evalDisjFormula ctx phi
         i0V  = eval ctx i0
-        uV   = eval ctx u
-        bV   = eval ctx b
+        uV   = myTrace ("[doComp - u = " ++ show u ++ "]" ++ show (Comp fam phi i0 u b i)) $ eval ctx u
+        bV   = myTrace ("[doComp - b = " ++ show b ++ "]" ++ show (Comp fam phi i0 u b i)) $ eval ctx b
         iV   = eval ctx i
         -- Compute the type of the composition, and prepare the neutral value
         doNeutralComp = simplNeutralValue $
@@ -615,8 +638,9 @@ printTerm' i = \case
             ++ printTerm' (i+1) u ++  " " ++ printTerm' (i+1) b
                 ++  " " ++ printTerm' (i+1) i' ++ par2
     -------- Used only when debugging, to print proper values
-    Closure cl _ -> "Cl(" ++ show cl ++  ")"
-    Neutral v t  -> "N{" ++ printTerm' i v ++ "}:" ++ printTerm' (i+1) t
+    Closure cl ctx -> "Cl(" ++ show cl ++  ";" ++ showCtx ctx ++ ")"
+    Neutral v t  -> printTerm' i v -- "N{" ++ printTerm' i v ++ "}:" ++ printTerm' (i+1) t
+    TermV v -> show v
     -- Parentheses are not needed if `i` is zero
     where (par1,par2) = if i == 0 then ("","") else ("(",")")
 

@@ -149,6 +149,7 @@ checkSingleToplevel' (Example t) = do
     (unlockedCtx,_,lockedNames) <- get
     let ctx = getLockedCtx lockedNames unlockedCtx
         ty  = inferType ctx emptyDirEnv t
+    printLnIO $ "\nInferring type of term '" ++ show t ++ "'"
     case ty of
         Left err -> do
            liftIO $ showErr err
@@ -277,7 +278,7 @@ addDef :: Ctx -> (Ident,Term,Term) -> Either ErrorString Ctx
 addDef ctx (s,t,e) = do
     checkType ctx emptyDirEnv t Universe -- Check that `t` is a type
     let tVal = eval ctx t
-    checkType ctx emptyDirEnv e tVal -- Check that `e` has type `t`
+    checkType ctx emptyDirEnv e tVal     -- Check that `e` has type `t`
     Right $ extend ctx s (Def t e)
 
 -- Add a definition to the current context 

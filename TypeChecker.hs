@@ -10,7 +10,7 @@ import Conv
 
 -- Infer the type of a term, in the given context and directions environment
 inferType :: Ctx -> DirEnv -> Term -> Either ErrorString Value
-inferType ctx dirs term = case term of
+inferType ctx dirs term = myTrace ("[inferType] " ++ show term ++ ", ctx = " ++ showCtx ctx ++ ", dirs = " ++ show dirs) $ case term of
     -- Variables: look up the type in the context
     Var s -> Right $ lookupType s ctx
     -- Universe
@@ -149,12 +149,13 @@ inferType ctx dirs term = case term of
     Comp fam phi@(Disj df) i0 u b i -> do
         -- Checking the type-family `fam`, point `i_0` and formula `phi`
         checkType ctx dirs fam (makeFunTypeVal I Universe) -- I -> U
-        -- TODO Check that the type is fibrant
+        -- TODO Check that the type is fibrant --var `notElem` concatMap vars (keys sysR)
         checkType ctx dirs i0 I
         checkDisjFormula ctx phi
         -- Checking that `u` has the correct type
         let var = newVar (keys ctx) (Ident "_i")
-        checkType ctx dirs u (eval (extend ctx var (Decl I))
+        --let ctx' = extend ctx var (Decl I)
+        checkType ctx dirs u (eval ctx
             (Abst var I (Partial phi (App fam (Var var)))))
         -- Checking that `b` has type `[phi -> u i0](fam i0)`
         checkType ctx dirs b $
@@ -197,7 +198,7 @@ checkTypePartialDisj (Disj df) ctx dirs e v =
 -- Check the type of a term agains a given type
 -- The type must be a value (i.e. in β-normal form)
 checkType :: Ctx -> DirEnv -> Term -> Value -> Either ErrorString ()
-checkType ctx dirs term v = myTrace ("[checkType]<= term = " ++ show term ++ ", v = " ++ show v ++ ", ctx = " ++ showCtx (filter (\(s,_) -> s `elem` (vars term)) ctx) ++ ", dirs = " ++ show dirs) $ case (term,v) of
+checkType ctx dirs term v = myTrace ("[checkType]<= term = " ++ show term ++ ", v = " ++ show v ++ ", ctx = " ++ showCtx ctx ++ ", dirs = " ++ show dirs) $ case (term,v) of
 --checkType ctx dirs term v = case (term,v) of
     -- Let-definition
     (TDef (s,t,e) t',_) -> do
@@ -287,9 +288,10 @@ checkType ctx dirs term v = myTrace ("[checkType]<= term = " ++ show term ++ ", 
     otherwise -> do
         ty <- inferType ctx dirs term
         -- Check for sub-typing: `v` more general than `ty` 
-        unless (compTypes (keys ctx) dirs ty v) $
-            Left $ "type '" ++ show v ++ "' expected, got term '" ++ show term
-                ++ "' of type '" ++ show ty ++ "' instead"
+        myTrace ("[checkType] inferred type of " ++ show term ++ " = " ++ show ty ++ ", ctx = " ++ showCtx ctx) $
+            unless (compTypes (keys ctx) dirs ty v) $
+                Left $ "type '" ++ show v ++ "' expected, got term '" ++ show term
+                    ++ "' of type '" ++ show ty ++ "' instead"
 
 -- Check compatibility (subtyping) between two partial or restriction types,
 -- as specified by the typing rules: `v1` more general than `v2`

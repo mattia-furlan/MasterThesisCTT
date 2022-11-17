@@ -46,6 +46,8 @@ data Term
     | Closure Term Ctx   
     --         val  type
     | Neutral Value Value
+    -- Just for composition (wrap a value inside a term)
+    | TermV Value
   deriving (Eq, Ord)
 
 type Value = Term
@@ -126,7 +128,7 @@ instance SyntacticObject Term where
             ++ vars b ++ vars i
         Closure t ctx         -> vars t ++ keys ctx
         Neutral v _           -> vars v
-
+        TermV v               -> [] -- Dummy value (not necessary)
     freeVars = \case
         Var s                 -> [s]
         Universe              -> []
@@ -156,6 +158,7 @@ instance SyntacticObject Term where
         Restr sys t           -> freeVars sys ++ freeVars t
         Comp fam phi i0 u b i -> freeVars fam ++ freeVars phi ++ freeVars i0
             ++ freeVars u ++ freeVars b ++ freeVars i
+        TermV v               -> []
 
 instance SyntacticObject AtomicFormula where
     vars af = case af of
