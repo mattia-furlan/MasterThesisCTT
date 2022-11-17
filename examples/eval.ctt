@@ -47,3 +47,5 @@ adt3 : adt = inr (inr ((N -> S (S Z)),(false,Z))) ;
 g : N -> N ;
 adt3' : adt = inr (inr (g,(false,Z))) ;
 
+transp (I -> adt) adt3 ;
+

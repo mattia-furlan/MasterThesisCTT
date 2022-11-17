@@ -1,0 +1,274 @@
+id : [A:U] A -> A = [A:U][a:A] a ;
+
+Path : [A : U] A -> A -> U =
+    [A : U][a0:A][a1 : A][i : I] [(i = 0) -> a0 | (i = 1) -> a1] A ;
+
+refl : [A : U][a : A] Path A a a = [A : U][a : A][i : I] a ;
+
+fcomp : [A,B,C:U][f:B -> C][g:A -> B] A -> C
+ = [A,B,C:U][f:B -> C][g:A -> B][a:A] f (g a) ;
+
+isEquiv : [A,B:U] (A -> B) -> U
+ = [A,B:U][f:A -> B] (<g:B -> A> Path (B -> B) (fcomp B A B f g) (id B)) * (<h:B -> A> Path (A -> A) (fcomp A B A h f) (id A)) ;
+
+equiv : U -> U -> U
+ = [A,B:U]<f:A -> B> isEquiv A B f;
+
+funext : [A,B:U][f,g:A -> B] ([x:A] Path B (f x) (g x)) -> Path (A -> B) f g =
+    [A,B:U][f,g:A -> B][p:[x:A] Path B (f x) (g x)][i:I][x:A] (p x i) ;
+
+ap : [A,B:U][f:A->B][a1,a2:A] Path A a1 a2 -> Path B (f a1) (f a2) = 
+     [A,B:U][f:A->B][a1,a2:A][p:Path A a1 a2][i:I] f (p i) ;
+
+transp : [F : I -> U] F 0 -> F 1 = [F : I -> U][a0 : F 0]
+    comp F () 0 (I -> []) a0 1 ;
+
+transp' : [F : I -> U][i0,i1:I] F i0 -> F i1 = [F : I -> U][i0,i1:I][a0 : F i0]
+    comp F () i0 (I -> []) a0 i1 ;
+
+invFill : [A:U][a,b:A][p:Path A a b][i,j:I][j = 0 -> a | i = 0 -> p j | i = 1 -> a]A
+ = [A:U][a,b:A][p:Path A a b]
+   [i,j:I] comp (I -> A) (i = 0 \/ i = 1) 0 ([j':I][i = 0 -> p j' | i = 1 -> a]) a j ;
+
+inv : [A:U][a,b:A] Path A a b -> Path A b a
+ = [A:U][a,b:A][p:Path A a b]
+   [i:I] (comp (I -> A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> a]) a 1) ;
+
+concatFill : [A:U][a,b,c:A][p:Path A a b][q:Path A b c][i,j:I][j = 0 -> p i | i = 0 -> a | i = 1 -> q j]A
+ = [A:U][a,b,c:A][p:Path A a b][q:Path A b c]
+   [i,j:I] comp (I -> A) (i = 0 \/ i = 1) 0 ([j':I][i = 0 -> a | i = 1 -> q j']) (p i) j ;
+
+concat : [A:U][a,b,c:A] Path A a b -> Path A b c -> Path A a c =
+    [A:U][a,b,c:A][p:Path A a b][q:Path A b c]
+        [i:I] comp (I -> A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> a | i = 1 -> q j]) (p i) 1 ;
+
+rightUnit : [A:U][a,b:A][p:Path A a b] Path (Path A a b) p (concat A a b b p (refl A b)) 
+ = [A:U][a,b:A][p:Path A a b][i,j:I] concatFill A a b b p (refl A b) j i ;
+
+weakMeet : [A:U][a,b:A][p:Path A a b][i,k:I][i = 0 -> a | i = 1 -> p k | k = 0 -> a | k = 1 -> p i]A
+ = [A:U][a,b:A][p:Path A a b][i,k:I] comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0
+    ([j:I]
+        [ i = 0 -> a |
+          i = 1 -> concatFill A a a b (refl A a) p j k  |
+          k = 0 -> a |
+          k = 1 -> concatFill A a a b (refl A a) p j i
+        ]) a 1 ;
+
+gamma : [A:U][a,b:A][p:Path A a b][k,i:I][k = 0 -> inv A a b p i | k = 1 -> b | i = 0 -> b | i = 1 -> p k ]A 
+ = [A:U][a,b:A][p:Path A a b][k,i:I]
+   comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> weakMeet A a b p j k | k = 0 -> invFill A a b p i j | k = 1 -> p j]) a 1 ;
+
+leftUnit : [A:U][a,b:A][p:Path A a b] Path (Path A a b) p (concat A a a b (refl A a) p)
+ = [A:U][a,b:A][p:Path A a b][k,i:I]
+   comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0 ([j:I][i = 0 -> a | i = 1 -> gamma A a b p j k | k = 0 -> p i | k = 1 -> concatFill A a a b (refl A a) p i j]) (invFill A a b p k i) 1 ;
+
+pathInd : [A:U][a:A][C:[x:A](Path A a x)->U] C a (refl A a) -> [x:A][p:Path A a x] C x p
+ = [A:U][a:A][C:[x:A](Path A a x)->U][c: C a (refl A a)][x:A][p:Path A a x]
+    transp ([i:I] C (weakMeet A a x p i 1) ([j:I] weakMeet A a x p i j)) c ;
+
+alphaFill : [A:U][a:A][k,i,j:I][k = 0 -> a | k = 1 -> a | i = 0 -> weakMeet A a a (refl A a) k j | i = 1 -> a | j = 0 -> a]A
+ = [A:U][a:A][k,i,j:I] comp (I -> A) (i = 0 \/ i = 1 \/ k = 0 \/ k = 1) 0
+    ([j':I][i = 0 -> weakMeet A a a (refl A a) k j' | i = 1 -> a | k = 0 -> a | k = 1 -> a]) a j ;
+
+alpha : [A:U][a:A][k,i:I][k = 0 -> a | k = 1 -> a | i = 0 -> weakMeet A a a (refl A a) k 1 | i = 1 -> a]A
+ = [A:U][a:A][k,i:I] alphaFill A a k i 1 ;
+
+D : [A:U][a:A][C:[x:A](Path A a x) -> U] I -> I -> U
+ = [A:U][a:A][C:[x:A](Path A a x) -> U]
+   [i:I][k:I] C (alpha A a k i) ([x:I] alphaFill A a k i x) ;
+
+pathIndComp : [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x][c:C a (refl A a)]
+  Path (C a (refl A a)) (pathInd A a C c a (refl A a)) c
+ = [A:U][a:A][C:[x:A](Path A a x)->U][x:A][p:Path A a x][c:C a (refl A a)][i:I]
+   comp (D A a C i) (i = 0 \/ i = 1) 0
+   ([j:I][i = 0 -> transp' ([i':I] C (weakMeet A a a (refl A a) i' 1) ([j':I] weakMeet A a a (refl A a) i' j')) 0 j c | i = 1 -> c]) c 1 ; 
+
+transport : [A : U][P : A -> U][x,y:A][p : Path A x y] P x -> P y = 
+    [A : U][P : A -> U][x,y:A][p : Path A x y][u : P x]
+        transp ([i : I] P (p i)) u ;
+
+transportRefl' : [A : U][P : A -> U][x:A][y:P x]
+    Path (P x) (transport A P x x (refl A x) y) y 
+ = [A : U][P : A -> U][x:A][y:P x]
+   [i:I] comp (I -> P x) () i (I -> []) y 1 ;
+
+transportRefl : [A : U][P : A -> U][x:A]
+    Path (P x -> P x) (transport A P x x (refl A x)) (id (P x)) 
+ = [A : U][P : A -> U][x:A] funext (P x) (P x)
+   (transport A P x x (refl A x)) (id (P x))
+   (transportRefl' A P x);
+
+transportReflApp : [A : U][P : A -> U][x:A][u:P x]
+    Path (P x) (transport A P x x (refl A x) u) u
+ = [A : U][P : A -> U][x:A][u:P x]
+   ap (P x -> P x) (P x) ([f:P x -> P x] f u) (transport A P x x (refl A x))
+   (id (P x)) (transportRefl A P x) ;
+
+---
+
+HOTT_2_11_2' : [A:U][a,x1:A][q:Path A a x1]
+    Path (Path A a x1) (transport A ([x:A] Path A a x) x1 x1 (refl A x1) q) (concat A a x1 x1 q (refl A x1)) 
+ = [A:U][a,x1:A][q:Path A a x1] concat (Path A a x1)
+   (transport A ([x:A] Path A a x) x1 x1 (refl A x1) q) q (concat A a x1 x1 q (refl A x1))
+   (transportReflApp A ([x:A] Path A a x) x1 q) (rightUnit A a x1 q);
+
+HOTT_2_11_2 : [A:U][a,x1:A][q:Path A a x1][x2:A][p:Path A x1 x2]
+    Path (Path A a x2) (transport A ([x:A] Path A a x) x1 x2 p q) (concat A a x1 x2 q p)
+ = [A:U][a,x1:A][q:Path A a x1] pathInd A x1 ([x2:A][p:Path A x1 x2]
+   Path (Path A a x2) (transport A ([x:A] Path A a x) x1 x2 p q) (concat A a x1 x2 q p))
+   (HOTT_2_11_2' A a x1 q) ;
+
+---
+
+HOTT_2_3_10' : [A,B:U][f:A->B][P:B->U][x:A][u: P (f x)]
+    Path (P (f x)) (transport A ([z:A] P (f z)) x x (refl A x) u)
+                   (transport B P (f x) (f x) (ap A B f x x (refl A x)) u) 
+ = [A,B:U][f:A->B][P:B->U][x:A][u: P (f x)] concat (P (f x))
+   (transport B P (f x) (f x) (ap A B f x x (refl A x)) u) u
+   (transport A ([z:A] P (f z)) x x (refl A x) u)
+   (transportReflApp B P (f x) u)
+   (inv (P (f x)) (transport A ([z:A] P (f z)) x x (refl A x) u) u (transportReflApp A ([z:A] P (f z)) x u))
+   ;
+
+HOTT_2_3_10 : [A,B:U][f:A->B][P:B->U][x:A][u: P (f x)][y:A][p:Path A x y]
+    Path (P (f y)) (transport A ([z:A] P (f z)) x y p u)
+                   (transport B P (f x) (f y) (ap A B f x y p) u)
+ = [A,B:U][f:A->B][P:B->U][x:A][u: P (f x)] pathInd A x
+   ([y:A][p:Path A x y] Path (P (f y)) (transport A ([z:A] P (f z)) x y p u)
+        (transport B P (f x) (f y) (ap A B f x y p) u))
+   (HOTT_2_3_10' A B f P x u) ;
+
+---
+
+empty : U = [X:U] X ;
+
+emptyInd : [C:empty -> U][z:empty] C z 
+ = [C:empty -> U][z:empty] z (C z) ;
+
+emptyRec : [C:U] empty -> C
+= [C:U][z:empty] z C ;
+
+---
+
+ii : I ;
+
+unit : U = [ii = ii -> Z]N ;
+
+tt : unit = Z ;
+
+unitInd : [C:unit -> U] C tt -> [x:unit] C x 
+ = [C:unit -> U][p: C tt][x:unit] p ;
+
+bool : U = unit + unit ;
+
+false : bool = inl tt ;
+true : bool = inr tt ;
+
+boolInd : [C:bool -> U] C false -> C true -> [x:bool] C x 
+ = [C:bool -> U][cf:C false][ct:C true][x:bool]
+   split C ([u:unit] unitInd ([u':unit] C (inl u')) cf u) ([u:unit] unitInd ([u':unit] C (inr u')) ct u) x ;
+
+boolRec : [C:U] C -> C -> bool -> C
+ = [C:U][iff:C][ift:C][x:bool] boolInd (bool -> C) iff ift x ; 
+
+---
+
+code : [A,B:U][a0:A] A + B -> U = [A,B:U][a0:A][x:A + B]
+    split (A + B -> U) ([a:A] Path A a0 a) (B -> empty) x ;
+
+
+encode : [A,B:U][a0:A][x:A + B][p : Path (A + B) (inl a0) x] code A B a0 x 
+ = [A,B:U][a0:A][x:A + B][p : Path (A + B) (inl a0) x]
+   transport (A + B) ([x':A + B] code A B a0 x') (inl a0) x
+   p (refl A a0) ;
+
+decode : [A,B:U][a0:A][x:A + B][c: code A B a0 x] Path (A + B) (inl a0) x 
+ = [A,B:U][a0:A][x:A + B] split
+   ([x':A + B] code A B a0 x' -> Path (A + B) (inl a0) x')
+   ([a:A][c:code A B a0 (inl a)] ap A (A + B) ([a':A] inl a') a0 a c)
+   ([b:B][c:code A B a0 (inr b)] emptyRec (Path (A + B) (inl a0) (inr b)) c)
+   x
+   ;
+
+{-AA : U ;
+BB : U ;
+a0 : AA ;
+
+F : I -> U = I -> AA + BB ;
+
+
+transportReflApp (AA+BB) ([x:AA+BB] Path (AA+BB) (inl a0) x) (inl a0) (refl (AA+BB) (inl a0)) ;
+-}
+--transportReflApp (AA+BB) (code AA BB a0) (inl a0) ; --(refl AA a0) ;
+
+
+-- pathInd : [A:U][a:A][C:[x:A](Path A a x)->U] C a (refl A a) -> [x:A][p:Path A a x] C x p
+
+decode_encode_helper : [A,B:U][a0:A] Path (Path (A + B) (inl a0) (inl a0))
+ (decode A B a0 (inl a0) (encode A B a0 (inl a0) (refl (A + B) (inl a0)))) (decode A B a0 (inl a0) (refl A a0)) 
+ = [A,B:U][a0:A] ap
+   (Path A a0 a0)
+   (Path (A + B) (inl a0) (inl a0))
+   ([p:Path A a0 a0] decode A B a0 (inl a0) p)
+   (encode A B a0 (inl a0) (refl (A + B) (inl a0)))
+   (refl A a0)
+   (transportReflApp (A+B) (code A B a0) (inl a0) (refl A a0))
+ ;
+
+decode_encode : [A,B:U][a0:A][x:A + B][p : Path (A + B) (inl a0) x]
+    Path (Path (A + B) (inl a0) x) (decode A B a0 x (encode A B a0 x p)) p
+ = [A,B:U][a0:A] pathInd (A + B) (inl a0)
+    ([x':A + B][p' : Path (A + B) (inl a0) x']
+        Path (Path (A + B) (inl a0) x') (decode A B a0 x' (encode A B a0 x' p')) p')
+   (decode_encode_helper A B a0) ;
+
+decode_encode_inv : [A,B:U][a0:A][x:A + B][P : U = Path (A + B) (inl a0) x]
+    Path (P -> P) ([p:P] decode A B a0 x (encode A B a0 x p)) (id P)
+ = [A,B:U][a0:A][x:A + B][P : U = Path (A + B) (inl a0) x] funext P P
+   ([p:P] decode A B a0 x (encode A B a0 x p)) (id P)
+   (decode_encode A B a0 x) ;
+
+encode_decode_helper1 : [A,B:U][a0:A][a:A][c:code A B a0 (inl a)] Path (code A B a0 (inl a))
+    (encode A B a0 (inl a) (decode A B a0 (inl a) c)) (concat A a0 a0 a (refl A a0) c)
+ = [A,B:U][a0:A][a:A][c:code A B a0 (inl a)]
+    concat (code A B a0 (inl a)) (encode A B a0 (inl a) (decode A B a0 (inl a) c))
+        (transport A ([a':A] Path A a0 a') a0 a c (refl A a0)) (concat A a0 a0 a (refl A a0) c)
+        (HOTT_2_3_10 A (A+B) ([x:A] inl x) (code A B a0) a0 (refl A a0) a c)
+        (HOTT_2_11_2 A a0 a0 (refl A a0) a c) ;
+
+encode_decode_helper : [A,B:U][a0:A][a:A][c:code A B a0 (inl a)]
+    Path (code A B a0 (inl a)) (encode A B a0 (inl a) (decode A B a0 (inl a) c)) c 
+ = [A,B:U][a0:A][a:A][c:code A B a0 (inl a)] concat (code A B a0 (inl a))
+    (encode A B a0 (inl a) (decode A B a0 (inl a) c)) (concat A a0 a0 a (refl A a0) c) c
+    (encode_decode_helper1 A B a0 a c)
+    (inv (code A B a0 (inl a)) c (concat A a0 a0 a (refl A a0) c) (leftUnit A a0 a c)) ;
+
+encode_decode : [A,B:U][a0:A][x:A+B][c:code A B a0 x]
+    Path (code A B a0 x) (encode A B a0 x (decode A B a0 x c)) c
+ = [A,B:U][a0:A][x:A+B] split
+   ([x':A+B][c:code A B a0 x'] Path (code A B a0 x') (encode A B a0 x' (decode A B a0 x' c)) c)
+   ([a:A] encode_decode_helper A B a0 a)
+   ([b:B] ([c:code A B a0 (inr b)] emptyRec (Path (code A B a0 (inr b)) (encode A B a0 (inr b) (decode A B a0 (inr b) c))c)c))
+   x ;
+
+encode_decode_inv : [A,B:U][a0:A][x:A + B][P : U = code A B a0 x]
+    Path (P -> P) ([c:P] encode A B a0 x (decode A B a0 x c)) (id P)
+ = [A,B:U][a0:A][x:A + B][P : U = code A B a0 x] funext P P
+   ([c:P] encode A B a0 x (decode A B a0 x c)) (id P)
+   (encode_decode A B a0 x) ;
+
+HOTT_2_12_5 : [A,B:U][a0:A][x:A+B] equiv (Path (A+B) (inl a0) x) (code A B a0 x)
+ = [A,B:U][a0:A][x:A+B] encode A B a0 x,
+   ((decode A B a0 x, (encode_decode_inv A B a0 x)),
+    (decode A B a0 x, (decode_encode_inv A B a0 x))) ;
+
+
+coproduct_injectivity : [A,B:U][a0,a1:A] Path (A+B) (inl a0) (inl a1) -> Path A a0 a1
+ = [A,B:U][a0,a1:A] encode A B a0 (inl a1) ;
+
+coproduct_disjointness : [A,B:U][a0:A][b:B] Path (A+B) (inl a0) (inr b) -> empty
+ = [A,B:U][a0:A][b:B] encode A B a0 (inr b) ;
+
+true_neq_false : Path bool false true -> empty
+ = coproduct_disjointness unit unit tt tt;
+

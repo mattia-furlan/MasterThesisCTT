@@ -35,9 +35,9 @@ invFill : [A:U][a,b:A][p:Path A a b][i,j:I][j = 0 -> a | i = 0 -> p j | i = 1 ->
 inv : [A:U][a,b:A] Path A a b -> Path A b a = [A:U][a,b:A][p:Path A a b]
     [i:I] (comp (const A) (i = 0 \/ i = 1) 0 ([j:I][i = 0 -> p j | i = 1 -> a]) a 1) ;
 
-i : I ;
+ii : I ;
 
-unit : U = [i = i -> Z]N ;
+unit : U = [ii = ii -> Z]N ;
 
 tt : unit = Z ;
 
