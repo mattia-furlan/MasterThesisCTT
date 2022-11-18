@@ -151,11 +151,6 @@ inferType ctx dirs term = myTrace ("[inferType] " ++ show term ++ ", ctx = " ++ 
         let var = newVar (keys ctx) (Ident "_i")
         -- Checking the type-family `fam`, point `i_0` and formula `phi`
         checkType ctx dirs fam (makeFunTypeVal I Universe) -- I -> U
-        --
-        let famV = eval (extend ctx var (Decl I)) (App fam (Var var))
-        unless (checkFibrantType famV var) . Left $
-            "type family `" ++ show fam ++ "` is not fibrant"
-        --
         checkType ctx dirs i0 I
         checkDisjFormula ctx phi
         -- Checking that `u` has the correct type
@@ -182,28 +177,6 @@ isNat t v             = Left $ "expected type nat, got term '" ++ show t ++
 -- Utility function to get type values of the form A -> B
 makeFunTypeVal :: Term -> Term -> Value
 makeFunTypeVal ty e = eval emptyCtx (Abst (Ident "") ty e)
-
--- Check if the type family allows composition
-checkFibrantType :: Value -> Ident -> Bool
-checkFibrantType tyV var = case tyV of
-    Neutral{} -> True
-    Universe  -> False
-    Closure (Abst s ty e) ctx -> checkFibrantType (eval ctx e) var
-        && let s' = newVar (keys ctx) s
-               eV = (evalClosure tyV (Neutral (Var s') (eval ctx e)))
-           in checkFibrantType eV var
-    Closure (Sigma s ty e) ctx -> checkFibrantType (eval ctx e) var
-        && let s' = newVar (keys ctx) s
-               eV = (evalClosure tyV (Neutral (Var s') (eval ctx e)))
-           in checkFibrantType eV var
-    Sum ty1V ty2V -> checkFibrantType ty1V var
-        && checkFibrantType ty2V var
-    Nat -> True
-    Partial phi tyPV -> var `notElem` vars phi
-        && checkFibrantType tyPV var
-    Restr sys tyRV -> var `notElem` concatMap vars (keys sys)
-        && checkFibrantType tyRV var
-    v -> error $ "got " ++ show tyV
 
 -- Check the type of a term under a conjunction
 -- If the conjunction is false, type-check is trivially true

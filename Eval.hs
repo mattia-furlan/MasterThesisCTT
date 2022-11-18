@@ -72,7 +72,7 @@ eval ctx term = myTrace ("[eval] " ++ show term ++ ", ctx = " ++ showCtx ctx) $ 
 
 -- Evaluate a conjunctive formula
 evalConjFormula :: Ctx -> ConjFormula -> Maybe ConjFormula
-evalConjFormula ctx conj = conj'
+evalConjFormula ctx conj = myTrace ("[evalConjFormula] " ++ show conj ++ " => " ++ show conj') $ conj'
     where
         -- Get the bindings which concern the formula's variables
         entries' = filter (\(s,_) -> s `elem` vars conj) (getBindings ctx)
@@ -454,23 +454,59 @@ doComp ctx fam phi i0 u b i =
                                         map (\case (psi,Succ m) -> (psi,m)) sysV
                                     Succ m   -> m
                 Neutral{} -> doNeutralComp
-            -- Restriction type `[phi]ty`; the constraint on the variable
-            -- must have already been checked by the type-checker
-            Restr sysR tyV -> myTrace ("[doComp-Restr] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx) $
-                    doComp ctx (TermV fam') formula i0 u' b i
+                _ -> error $ "[doComp-Nat] got " ++ show bV
+            -- Partial type `[phi]ty`
+            Partial (Disj df) tyV -> myTrace ("[doComp-Partial] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx) $
+                    if var `elem` vars (Disj df) then
+                        error $ "Type family '" ++ show (readBack (keys ctx) famV)
+                            ++ "' is not fibrant"
+                    else
+                        sysComp
                 where
+                    -- Type family (without the formula)
+                    fam' = Closure (Abst var I ty') (ctxOf famV)
+                    ty'  = readBack (keys (ctxOf famV)) tyV
+                    -- Obtain a system will a composition for each conjunction
+                    -- If the system has just one value, return it
+                    sysCompVals = map helperComp df
+                    sysComp = if length df == 1 then
+                            head sysCompVals
+                        else
+                            Sys $ zip df sysCompVals
+                    -- Do composition on each conjunction
+                    helperComp :: ConjFormula -> Value
+                    helperComp conj = doComp (addConjBindings ctx conj)
+                        (TermV fam') phi i0 u (b' conj) i
+                    -- Eventually simplify `b` (as it may have already been evaluated)
+                    b' :: ConjFormula -> Value
+                    b' conj = readBack (keys ctx) $ case bV of
+                        -- A formula is true
+                        Sys sysU | any ((conjToDirEnv conj `makesTrueConj`) . fst) sysU
+                          -> snd . fromJust $
+                            find ((conjToDirEnv conj `makesTrueConj`) . fst) sysU
+                        _ -> bV
+            -- Restriction type `[psi -> w]ty`
+            Restr sysR tyV -> myTrace ("[doComp-Restr] " ++ show (Comp fam phi i0 u b i) ++ ", ctx = " ++ showCtx ctx) $
+                    if var `elem` concatMap vars (keys sys) then
+                        error $ "Type family '" ++ show (readBack (keys ctx) famV)
+                            ++ "' is not fibrant"
+                    else
+                        doComp ctx (TermV fam') formula i0 u' b i
+                where
+                    -- Get the new formula
                     formula = Disj $ phi' ++ psis
                     phi' = case phi of Disj ff -> ff 
                     psis = keys sysR
+                    -- Type family (without the restriction)
                     fam' = Closure (Abst var I ty') (ctxOf famV)
                     ty'  = readBack (keys (ctxOf famV)) tyV
-                    --ty'  = readBack (keys ctx) tyV
                     u'   = Abst var2 I (Sys sys')
                     -- Concatenate the two systems
                     sys' = map (\conj -> (conj,App u (Var var2))) phi'
                         ++ case doApply famV (Neutral (Var var2) I) of
                             Restr sys'' _ ->
                                 mapSys (TermV . readBack (keys ctx)) sys''
+
             -- Neutral type family; the result of the composition is neutral too
             otherwise -> myTrace ("[doComp-neutral] " ++
                 show (Comp fam phi i0 u b i)) $ doNeutralComp
@@ -594,13 +630,13 @@ printTerm' i = \case
         "[" ++ show s ++ ":" ++ printTerm' 0 t ++ " = "
             ++ printTerm' 0 e ++ "]" ++ printTerm' 0 t'
     Abst s t e   -> par1 ++ abstS ++ par2
-        where abstS = if not (containsVar s e)
+        where abstS = if s == Ident "" || not (containsVar s e)
                 then -- A -> B (no dependency)
                     printTerm' (i+1) t ++ " -> " ++ printTerm' 0 e
                 else
                     "[" ++ show s ++ ":" ++ printTerm' 0 t ++ "]" ++ printTerm' 0 e
     Sigma s t e  -> par1 ++ abstS ++ par2
-        where abstS = if not (containsVar s e)
+        where abstS = if s == Ident "" || not (containsVar s e)
                 then -- A * B (no dependency)
                     printTerm' (i+1) t ++ " * " ++ printTerm' 0 e
                 else
@@ -638,7 +674,7 @@ printTerm' i = \case
             ++ printTerm' (i+1) u ++  " " ++ printTerm' (i+1) b
                 ++  " " ++ printTerm' (i+1) i' ++ par2
     -------- Used only when debugging, to print proper values
-    Closure cl ctx -> "Cl(" ++ show cl ++  ";" ++ showCtx ctx ++ ")"
+    Closure cl ctx -> "Cl(" ++ show cl ++ ")"-- ";" ++ showCtx ctx ++ ")"
     Neutral v t  -> printTerm' i v -- "N{" ++ printTerm' i v ++ "}:" ++ printTerm' (i+1) t
     TermV v -> show v
     -- Parentheses are not needed if `i` is zero
