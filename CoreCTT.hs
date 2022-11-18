@@ -254,6 +254,16 @@ getBindings :: Ctx -> [(Ident,Value)]
 getBindings = concatMap $
     \(s,entry) -> case entry of Val v -> [(s,v)]; _ -> []
 
+-- Add interval value bindings of a conjunction to a context
+-- It is used solely in evaluating composition for partial types
+addConjBindings :: Ctx -> ConjFormula -> Ctx
+addConjBindings ctx (Conj cf) = map getAtomicBinding cf ++ ctx
+    where getAtomicBinding :: AtomicFormula -> (Ident,CtxEntry)
+          getAtomicBinding = \case
+            Eq0 s      -> (s,Val I0)
+            Eq1 s      -> (s,Val I1)
+            Diag s1 s2 -> (s2,Val (Neutral (Var s2) I))
+
 -- Shall not be called with values in the context
 -- (it is used only in `removeFromCtx`)
 instance SyntacticObject CtxEntry where
