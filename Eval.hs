@@ -128,18 +128,14 @@ evalDisjFormula ctx (Disj df) = if Conj [] `elem` df then
     else -- Otherwise evaluate each conjunction, disregarding the false ones
         Disj $ mapMaybe (evalConjFormula ctx) df
 
--- Helper function, used below to delete duplicates
--- in restriction and partial types
-nubFst :: Eq a => ([a],b) -> ([a],b)
-nubFst (as,b) = (nub as,b)
-
 -- Simplify cascading restriction types into one restriction type
 -- E.g. [psi_1 -> t_1]([psi_2 -> t_2]([psi_3 -> t_3]A)) becomes
 -- [psi_1 -> t_1 | psi_2 -> t_2 | psi_3 -> t_3]A
--- I call `nubFst` to delete duplicate formulas
 foldRestr :: System -> Value -> Value
-foldRestr sys0 v0 = uncurry Restr . nubFst $ foldRestr' sys0 v0
+foldRestr sys0 v0 = -- If the system if empty, return just the type
+    if null sys then v else Restr (nub sys) v
     where
+        (sys,v) = foldRestr' sys0 v0
         foldRestr' :: System -> Value -> (System,Value)
         foldRestr' sys v = case v of
             Restr sys' v' -> foldRestr' (sys ++ sys') v'
@@ -148,11 +144,14 @@ foldRestr sys0 v0 = uncurry Restr . nubFst $ foldRestr' sys0 v0
 -- Simplify cascading partial types into one partial type
 -- E.g. [phi_1]([phi_2]([phi_3]A)) becomes
 -- [phi /\ psi_2 /\ psi_3]A
--- I call `nubFst` to delete duplicate formulas
 foldPartial :: DisjFormula -> Value -> Value
-foldPartial (Disj df0) v0 = (\(df,v) -> Partial (Disj df) v) .
-    nubFst $ foldPartial' df0 v0
+foldPartial (Disj df0) v0 = -- If the formula is true, return just the type
+    if makesTrueDisj emptyDirEnv (Disj df) then
+        v
+    else -- `nub` removes duplicate formulas
+        Partial (Disj $ nub df) v
     where
+        (df,v) = foldPartial' df0 v0
         foldPartial' :: [ConjFormula] -> Value -> ([ConjFormula],Value)
         foldPartial' df v = case v of
             Partial (Disj df') v' -> foldPartial' (dnf df' df) v'
@@ -658,7 +657,7 @@ printTerm' i = \case
     Nat             -> "N"
     Zero            -> "Z"
     Succ t          -> par1 ++ "S " ++ printTerm' (i+1) t ++ par2
-    Ind ty b s n    -> par1 ++ "ind-N " ++ printTerm' (i+1) ty ++ " "
+    Ind ty b s n    -> par1 ++ "ind " ++ printTerm' (i+1) ty ++ " "
         ++ printTerm' (i+1) b ++ " " ++ printTerm' (i+1) s ++ " "
             ++ printTerm' (i+1) n ++ par2
     I               -> "I"
