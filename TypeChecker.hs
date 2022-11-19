@@ -86,7 +86,8 @@ inferType ctx dirs term = myTrace ("[inferType] " ++ show term ++ ", ctx = " ++ 
                 otherwise     -> (ty,id)
             famV = eval ctx fam
             makeRestr :: System -> Value -> Value
-            makeRestr = foldRestr . mapSys (famV `doApply`)
+            makeRestr = foldRestr . mapSys
+                (doSplit famV (eval ctx f1) (eval ctx f2))
         -- The type must be a coproduct
         case ty' of
             Sum{} -> do
@@ -122,7 +123,8 @@ inferType ctx dirs term = myTrace ("[inferType] " ++ show term ++ ", ctx = " ++ 
                 Nat           -> id
             famV = eval ctx fam
             makeRestr :: System -> Value -> Value
-            makeRestr = foldRestr . mapSys (famV `doApply`)
+            makeRestr = foldRestr . mapSys
+                (doInd famV (eval ctx base) (eval ctx step))
 
         -- Evaluate the type-family `fam`, checking that `base` has
         -- type `fam Z` 
@@ -194,7 +196,7 @@ checkTypePartialDisj :: DisjFormula -> Ctx -> DirEnv -> Term -> Value -> Either 
 checkTypePartialDisj (Disj df) ctx dirs e v = 
     mapM_ (\conj -> checkTypePartialConj conj ctx dirs e v) df
 
--- Check the type of a term agains a given type
+-- Check the type of a term against a given type
 -- The type must be a value (i.e. in β-normal form)
 checkType :: Ctx -> DirEnv -> Term -> Value -> Either ErrorString ()
 checkType ctx dirs term v = myTrace ("[checkType]<= term = " ++ show term ++ ", v = " ++ show v ++ ", ctx = " ++ showCtx ctx ++ ", dirs = " ++ show dirs) $ case (term,v) of
